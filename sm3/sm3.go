@@ -2,8 +2,8 @@ package sm3
 
 import (
 	"encoding/binary"
-	"hash"
 	"fmt"
+	"hash"
 )
 
 const (
@@ -86,7 +86,7 @@ func (d *sm3Digest) Write(p []byte) (n int, err error) {
 	//
 	i := 0
 	if d.xBufOff != 0 {
-		for ; i < len; {
+		for i < len {
 			d.xBuf[d.xBufOff] = p[i]
 			d.xBufOff++
 			i++
@@ -109,7 +109,7 @@ func (d *sm3Digest) Write(p []byte) (n int, err error) {
 	//
 	// load in the remainder.
 	//
-	for ; i < len; {
+	for i < len {
 		d.xBuf[d.xBufOff] = p[i]
 		d.xBufOff++
 		i++
@@ -129,7 +129,7 @@ func (d *sm3Digest) finish() {
 	//
 	d.Write([]byte{128})
 
-	for ; d.xBufOff != 0; {
+	for d.xBufOff != 0 {
 		d.Write([]byte{0})
 	}
 

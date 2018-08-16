@@ -3,6 +3,8 @@ package sm3
 import (
     "encoding/hex"
     "testing"
+    "fmt"
+    "bytes"
 )
 
 var testData = map[string]string{
@@ -40,5 +42,29 @@ func testSm3DigestSum(t *testing.T, src string, expected string) {
     hashHex := hex.EncodeToString(hash[:])
     if hashHex != expected {
         t.Errorf("result:%s , not equal expected\n", hashHex)
+    }
+}
+
+func TestSm3Digest_Write(t *testing.T) {
+    src1 := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    src2 := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    src3 := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+
+    d := New()
+    d.Write(src1)
+    d.Write(src2)
+    d.Write(src3)
+    digest1 := d.Sum(nil)
+    fmt.Printf("1 : %s\n", hex.EncodeToString(digest1))
+
+    d.Reset()
+    d.Write(src1)
+    d.Write(src2)
+    d.Write(src3)
+    digest2 := d.Sum(nil)
+    fmt.Printf("2 : %s\n", hex.EncodeToString(digest2))
+
+    if !bytes.Equal(digest1, digest2) {
+        t.Error("")
     }
 }

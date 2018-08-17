@@ -6,6 +6,7 @@ import (
     "crypto/rand"
     "encoding/hex"
     "bytes"
+    "math/big"
 )
 
 func TestGetSm2P256V1(t *testing.T) {
@@ -22,15 +23,15 @@ func TestGenerateKey(t *testing.T) {
     if err != nil {
         t.Error(err.Error())
     }
-    fmt.Printf("priv:%s\n", priv.d.Text(16))
-    fmt.Printf("x:%s\n", pub.x.Text(16))
-    fmt.Printf("y:%s\n", pub.y.Text(16))
+    fmt.Printf("priv:%s\n", priv.D.Text(16))
+    fmt.Printf("x:%s\n", pub.X.Text(16))
+    fmt.Printf("y:%s\n", pub.Y.Text(16))
 
     curve := GetSm2P256V1()
-    if !curve.IsOnCurve(pub.x, pub.y) {
-        t.Error("x,y is not on curve")
+    if !curve.IsOnCurve(pub.X, pub.Y) {
+        t.Error("x,y is not on Curve")
     }
-    fmt.Println("x,y is on sm2 curve")
+    fmt.Println("x,y is on sm2 Curve")
 }
 
 func TestEncryptDecrypt(t *testing.T) {
@@ -54,5 +55,41 @@ func TestEncryptDecrypt(t *testing.T) {
 
     if !bytes.Equal(plainText, src) {
         t.Error("decrypt result not equal expected")
+    }
+}
+
+type testSm2SignData struct {
+    d string
+    x string
+    y string
+    in string
+    sign string
+}
+
+var testSignData = []testSm2SignData {
+    {
+        d:"5DD701828C424B84C5D56770ECF7C4FE882E654CAC53C7CC89A66B1709068B9D",
+        x:"FF6712D3A7FC0D1B9E01FF471A87EA87525E47C7775039D19304E554DEFE0913",
+        y:"F632025F692776D4C13470ECA36AC85D560E794E1BCCF53D82C015988E0EB956",
+        in:"0102030405060708010203040506070801020304050607080102030405060708",
+        sign:"30450220213C6CD6EBD6A4D5C2D0AB38E29D441836D1457A8118D34864C247D727831962022100D9248480342AC8513CCDF0F89A2250DC8F6EB4F2471E144E9A812E0AF497F801",
+    },
+}
+
+func TestSign(t *testing.T) {
+    for _, data := range testSignData {
+        priv := new(PrivateKey)
+        priv.Curve = GetSm2P256V1()
+        dBytes, _ := hex.DecodeString(data.d)
+        priv.D = new(big.Int).SetBytes(dBytes)
+        inBytes, _ := hex.DecodeString(data.in)
+        sign, err := Sign(priv, nil, inBytes)
+        if err != nil {
+            t.Error(err.Error())
+        }
+        expected, _ := hex.DecodeString(data.sign)
+        if !bytes.Equal(sign, expected) {
+            t.Error("sign not equal expected")
+        }
     }
 }

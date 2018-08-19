@@ -42,6 +42,10 @@ type PrivateKey struct {
     Curve P256V1Curve
 }
 
+type sm2Signature struct {
+    R, S *big.Int
+}
+
 func init() {
     initSm2P256V1()
 }
@@ -83,18 +87,18 @@ func GenerateKey(rand io.Reader) (*PrivateKey, *PublicKey, error) {
 }
 
 func nextK(rnd io.Reader, max *big.Int) (*big.Int, error) {
-    k, err := rand.Int(rnd, max)
-    if err != nil {
-        return nil, err
-    }
     intOne := new(big.Int).SetInt64(1)
-    for k.Cmp(intOne) == -1 {
+    var k *big.Int
+    var err error
+    for ; ;  {
         k, err = rand.Int(rnd, max)
         if err != nil {
             return nil, err
         }
+        if k.Cmp(intOne) >= 0 {
+            return k, err
+        }
     }
-    return k, nil
 }
 
 func xor(data []byte, kdfOut []byte, dRemaining int) {
@@ -215,7 +219,7 @@ func Decrypt(priv *PrivateKey, in []byte) ([]byte, error) {
 func getZ(d hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte) []byte {
     d.Reset()
 
-    userIdLen := uint16(len(userId))
+    userIdLen := uint16(len(userId) * 8)
     var userIdLenBytes [2]byte
     binary.BigEndian.PutUint16(userIdLenBytes[:], userIdLen)
     d.Write(userIdLenBytes[:])
@@ -230,19 +234,23 @@ func getZ(d hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId 
     return d.Sum(nil)
 }
 
+func caculateE(d hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte, src []byte) *big.Int {
+    z := getZ(d, curve, pubX, pubY, userId)
+
+    d.Reset()
+    d.Write(z)
+    d.Write(src)
+    eHash := d.Sum(nil)
+    return new(big.Int).SetBytes(eHash)
+}
+
 func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
     digest := sm3.New()
     pubX, pubY := priv.Curve.ScalarBaseMult(priv.D.Bytes())
     if userId == nil {
         userId = sm2SignDefaultUserId
     }
-    z := getZ(digest, &priv.Curve, pubX, pubY, userId)
-
-    digest.Reset()
-    digest.Write(z)
-    digest.Write(in)
-    eHash := digest.Sum(nil)
-    e := new(big.Int).SetBytes(eHash)
+    e := caculateE(digest, &priv.Curve, pubX, pubY, userId, in)
 
     var r, s *big.Int
     intZero := new(big.Int).SetInt64(0)
@@ -253,7 +261,7 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
         for ; ;  {
             k, err = nextK(rand.Reader, priv.Curve.N)
             if err != nil {
-                return nil, err
+               return nil, err
             }
             px, _ := priv.Curve.ScalarBaseMult(k.Bytes())
             r = util.Add(e, px)
@@ -261,7 +269,7 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
 
             rk := new(big.Int).Set(r)
             rk = rk.Add(rk, k)
-            if r.Cmp(intZero) == 0 || rk.Cmp(priv.Curve.N) == 0 {
+            if r.Cmp(intZero) != 0 && rk.Cmp(priv.Curve.N) != 0 {
                 break
             }
         }
@@ -274,14 +282,54 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
         s = util.Mul(dPlus1ModN, s)
         s = util.Mod(s, priv.Curve.N)
 
-        if s.Cmp(intZero) == 0 {
+        if s.Cmp(intZero) != 0 {
             break
         }
     }
 
-    result, err := asn1.Marshal([]big.Int{*r, *s})
+    result, err := asn1.Marshal(sm2Signature{r, s})
     if err != nil {
         return nil, err
     }
     return result, nil
+}
+
+func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
+    sm2Sign := new(sm2Signature)
+    _, err := asn1.Unmarshal(sign, sm2Sign)
+    if err != nil {
+        return false
+    }
+
+    intZero := new(big.Int).SetInt64(0)
+    intOne := new(big.Int).SetInt64(1)
+    if sm2Sign.R.Cmp(intOne) == -1 || sm2Sign.R.Cmp(pub.Curve.N) >= 0 {
+        return false;
+    }
+    if sm2Sign.S.Cmp(intOne) == -1 || sm2Sign.S.Cmp(pub.Curve.N) >= 0 {
+        return false;
+    }
+
+    digest := sm3.New()
+    if userId == nil {
+        userId = sm2SignDefaultUserId
+    }
+    e := caculateE(digest, &pub.Curve, pub.X, pub.Y, userId, src)
+
+    t := util.Add(sm2Sign.R, sm2Sign.S)
+    t = util.Mod(t, pub.Curve.N)
+    if t.Cmp(intZero) == 0 {
+        return false
+    }
+
+    sgx, sgy := pub.Curve.ScalarBaseMult(sm2Sign.S.Bytes())
+    tpx, tpy := pub.Curve.ScalarMult(pub.X, pub.Y, t.Bytes())
+    x, y := pub.Curve.Add(sgx, sgy, tpx, tpy)
+    if util.IsEcPointInfinity(x, y) {
+        return false
+    }
+
+    expectedR := util.Add(e, x)
+    expectedR = util.Mod(expectedR, pub.Curve.N)
+    return expectedR.Cmp(sm2Sign.R) == 0
 }

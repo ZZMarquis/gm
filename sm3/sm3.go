@@ -111,7 +111,7 @@ func (d *sm3Digest) Write(p []byte) (n int, err error) {
     //
     limit := ((len - i) & ^3) + i
     for ; i < limit; i += 4 {
-        d.processWord(p, int32(0))
+        d.processWord(p, int32(i))
     }
 
     //

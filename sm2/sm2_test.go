@@ -76,6 +76,8 @@ var testSignData = []testSm2SignData {
     },
 }
 
+
+
 func TestSign(t *testing.T) {
     for _, data := range testSignData {
         priv := new(PrivateKey)
@@ -87,9 +89,34 @@ func TestSign(t *testing.T) {
         if err != nil {
             t.Error(err.Error())
         }
-        expected, _ := hex.DecodeString(data.sign)
-        if !bytes.Equal(sign, expected) {
-            t.Error("sign not equal expected")
+        fmt.Printf("sign:%s\n", hex.EncodeToString(sign))
+
+        pub := new(PublicKey)
+        pub.Curve = GetSm2P256V1()
+        xBytes, _ := hex.DecodeString(data.x)
+        yBytes, _ := hex.DecodeString(data.y)
+        pub.X = new(big.Int).SetBytes(xBytes)
+        pub.Y = new(big.Int).SetBytes(yBytes)
+        result := Verify(pub, nil, inBytes, sign)
+        if !result {
+            t.Error("verify failed")
+        }
+    }
+}
+
+func TestVerify(t *testing.T) {
+    for _, data := range testSignData {
+        pub := new(PublicKey)
+        pub.Curve = GetSm2P256V1()
+        xBytes, _ := hex.DecodeString(data.x)
+        yBytes, _ := hex.DecodeString(data.y)
+        pub.X = new(big.Int).SetBytes(xBytes)
+        pub.Y = new(big.Int).SetBytes(yBytes)
+        inBytes, _ := hex.DecodeString(data.in)
+        sign, _ := hex.DecodeString(data.sign)
+        result := Verify(pub, nil, inBytes, sign)
+        if !result {
+            t.Error("verify failed")
         }
     }
 }

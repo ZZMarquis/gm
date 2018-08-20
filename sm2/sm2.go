@@ -301,13 +301,12 @@ func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
         return false
     }
 
-    intZero := new(big.Int).SetInt64(0)
     intOne := new(big.Int).SetInt64(1)
     if sm2Sign.R.Cmp(intOne) == -1 || sm2Sign.R.Cmp(pub.Curve.N) >= 0 {
-        return false;
+        return false
     }
     if sm2Sign.S.Cmp(intOne) == -1 || sm2Sign.S.Cmp(pub.Curve.N) >= 0 {
-        return false;
+        return false
     }
 
     digest := sm3.New()
@@ -316,6 +315,7 @@ func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
     }
     e := caculateE(digest, &pub.Curve, pub.X, pub.Y, userId, src)
 
+    intZero := new(big.Int).SetInt64(0)
     t := util.Add(sm2Sign.R, sm2Sign.S)
     t = util.Mod(t, pub.Curve.N)
     if t.Cmp(intZero) == 0 {

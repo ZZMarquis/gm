@@ -19,7 +19,7 @@ const (
 )
 
 var (
-    sm2HBytes            = new(big.Int).SetInt64(1).Bytes()
+    sm2H                 = new(big.Int).SetInt64(1)
     sm2SignDefaultUserId = []byte{
         0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
         0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38}
@@ -52,7 +52,7 @@ func init() {
 
 func initSm2P256V1() {
     sm2P, _ := new(big.Int).SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF", 16)
-    sm2A, _  := new(big.Int).SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC", 16)
+    sm2A, _ := new(big.Int).SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC", 16)
     sm2B, _ := new(big.Int).SetString("28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93", 16)
     sm2N, _ := new(big.Int).SetString("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123", 16)
     sm2Gx, _ := new(big.Int).SetString("32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7", 16)
@@ -86,11 +86,18 @@ func GenerateKey(rand io.Reader) (*PrivateKey, *PublicKey, error) {
     return privateKey, publicKey, nil
 }
 
+func caculatePubKey(priv *PrivateKey) *PublicKey {
+    pub := new(PublicKey)
+    pub.Curve = priv.Curve
+    pub.X, pub.Y = priv.Curve.ScalarBaseMult(priv.D.Bytes())
+    return pub
+}
+
 func nextK(rnd io.Reader, max *big.Int) (*big.Int, error) {
     intOne := new(big.Int).SetInt64(1)
     var k *big.Int
     var err error
-    for ; ;  {
+    for ; ; {
         k, err = rand.Int(rnd, max)
         if err != nil {
             return nil, err
@@ -107,10 +114,10 @@ func xor(data []byte, kdfOut []byte, dRemaining int) {
     }
 }
 
-func kdf(hash hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
+func kdf(digest hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
     bufSize := 4
-    if bufSize < hash.BlockSize() {
-        bufSize = hash.BlockSize()
+    if bufSize < digest.BlockSize() {
+        bufSize = digest.BlockSize()
     }
     buf := make([]byte, bufSize)
 
@@ -120,18 +127,18 @@ func kdf(hash hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
     off := 0
     ct := uint32(0)
     for off < encDataLen {
-        hash.Reset()
-        hash.Write(c1xBytes)
-        hash.Write(c1yBytes)
+        digest.Reset()
+        digest.Write(c1xBytes)
+        digest.Write(c1yBytes)
         ct++
         binary.BigEndian.PutUint32(buf, ct)
-        hash.Write(buf[:4])
-        tmp := hash.Sum(nil)
+        digest.Write(buf[:4])
+        tmp := digest.Sum(nil)
         copy(buf[:bufSize], tmp[:bufSize])
 
         xorLen := encDataLen - off
-        if xorLen > hash.BlockSize() {
-            xorLen = hash.BlockSize()
+        if xorLen > digest.BlockSize() {
+            xorLen = digest.BlockSize()
         }
         xor(encData[off:], buf, xorLen)
         off += xorLen
@@ -191,7 +198,7 @@ func Decrypt(priv *PrivateKey, in []byte) ([]byte, error) {
     c1 := make([]byte, c1Len)
     copy(c1, in[:c1Len])
     c1x, c1y := elliptic.Unmarshal(priv.Curve, c1)
-    sx, sy := priv.Curve.ScalarMult(c1x, c1y, sm2HBytes)
+    sx, sy := priv.Curve.ScalarMult(c1x, c1y, sm2H.Bytes())
     if util.IsEcPointInfinity(sx, sy) {
         return nil, errors.New("[h]C1 at infinity")
     }
@@ -223,7 +230,9 @@ func getZ(d hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId 
     var userIdLenBytes [2]byte
     binary.BigEndian.PutUint16(userIdLenBytes[:], userIdLen)
     d.Write(userIdLenBytes[:])
-    d.Write(userId)
+    if userId != nil && len(userId) > 0 {
+        d.Write(userId)
+    }
 
     d.Write(curve.A.Bytes())
     d.Write(curve.B.Bytes())
@@ -255,13 +264,13 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
     var r, s *big.Int
     intZero := new(big.Int).SetInt64(0)
     intOne := new(big.Int).SetInt64(1)
-    for ; ;  {
+    for ; ; {
         var k *big.Int
         var err error
-        for ; ;  {
+        for ; ; {
             k, err = nextK(rand.Reader, priv.Curve.N)
             if err != nil {
-               return nil, err
+                return nil, err
             }
             px, _ := priv.Curve.ScalarBaseMult(k.Bytes())
             r = util.Add(e, px)

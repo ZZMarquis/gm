@@ -32,3 +32,21 @@ func Mul(x, y *big.Int) *big.Int {
     z.Mul(x, y)
     return &z
 }
+
+func Lsh(x *big.Int, n uint) *big.Int {
+    var z big.Int
+    z.Lsh(x, n)
+    return &z
+}
+
+func SetBit(x *big.Int, i int, b uint) *big.Int {
+    var z big.Int
+    z.SetBit(x, i, b)
+    return &z
+}
+
+func And(x, y *big.Int) *big.Int {
+    var z big.Int
+    z.Add(x, y)
+    return &z
+}

@@ -36,6 +36,7 @@ func TestSm4Cipher_Encrypt(t *testing.T) {
         c, err := NewCipher(data.key)
         if err != nil {
             t.Error(err.Error())
+            return
         }
 
         encrypter := cipher.NewCBCEncrypter(c, data.iv)
@@ -43,7 +44,8 @@ func TestSm4Cipher_Encrypt(t *testing.T) {
         encrypter.CryptBlocks(result, util.PKCS5Padding(data.in, BlockSize))
         fmt.Printf("encrypt result:%s\n", hex.EncodeToString(result))
         if !bytes.Equal(result, data.out) {
-           t.Error("encrypt result not equal expected")
+            t.Error("encrypt result not equal expected")
+            return
         }
 
         decrypter := cipher.NewCBCDecrypter(c, data.iv)
@@ -53,6 +55,7 @@ func TestSm4Cipher_Encrypt(t *testing.T) {
         plain = util.PKCS5UnPadding(plain)
         if !bytes.Equal(plain, data.in) {
             t.Error("decrypt result not equal expected")
+            return
         }
     }
 }

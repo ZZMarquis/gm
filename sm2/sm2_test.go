@@ -22,6 +22,7 @@ func TestGenerateKey(t *testing.T) {
     priv, pub, err := GenerateKey(rand.Reader)
     if err != nil {
         t.Error(err.Error())
+        return
     }
     fmt.Printf("priv:%s\n", priv.D.Text(16))
     fmt.Printf("x:%s\n", pub.X.Text(16))
@@ -30,6 +31,7 @@ func TestGenerateKey(t *testing.T) {
     curve := GetSm2P256V1()
     if !curve.IsOnCurve(pub.X, pub.Y) {
         t.Error("x,y is not on Curve")
+        return
     }
     fmt.Println("x,y is on sm2 Curve")
 }
@@ -39,22 +41,26 @@ func TestEncryptDecrypt(t *testing.T) {
     priv, pub, err := GenerateKey(rand.Reader)
     if err != nil {
         t.Error(err.Error())
+        return
     }
 
     cipherText, err := Encrypt(pub, src)
     if err != nil {
         t.Error(err.Error())
+        return
     }
     fmt.Printf("cipher text:%s\n", hex.EncodeToString(cipherText))
 
     plainText, err := Decrypt(priv, cipherText)
     if err != nil {
         t.Error(err.Error())
+        return
     }
     fmt.Printf("plain text:%s\n", hex.EncodeToString(plainText))
 
     if !bytes.Equal(plainText, src) {
         t.Error("decrypt result not equal expected")
+        return
     }
 }
 
@@ -88,6 +94,7 @@ func TestSign(t *testing.T) {
         sign, err := Sign(priv, nil, inBytes)
         if err != nil {
             t.Error(err.Error())
+            return
         }
         fmt.Printf("sign:%s\n", hex.EncodeToString(sign))
 
@@ -100,6 +107,7 @@ func TestSign(t *testing.T) {
         result := Verify(pub, nil, inBytes, sign)
         if !result {
             t.Error("verify failed")
+            return
         }
     }
 }
@@ -117,6 +125,7 @@ func TestVerify(t *testing.T) {
         result := Verify(pub, nil, inBytes, sign)
         if !result {
             t.Error("verify failed")
+            return
         }
     }
 }

@@ -32,6 +32,7 @@ func testSum(t *testing.T, src string, expected string) {
     hashHex := hex.EncodeToString(hash[:])
     if hashHex != expected {
         t.Errorf("result:%s , not equal expected\n", hashHex)
+        return
     }
 }
 
@@ -42,6 +43,7 @@ func testSm3DigestSum(t *testing.T, src string, expected string) {
     hashHex := hex.EncodeToString(hash[:])
     if hashHex != expected {
         t.Errorf("result:%s , not equal expected\n", hashHex)
+        return
     }
 }
 
@@ -66,5 +68,6 @@ func TestSm3Digest_Write(t *testing.T) {
 
     if !bytes.Equal(digest1, digest2) {
         t.Error("")
+        return
     }
 }

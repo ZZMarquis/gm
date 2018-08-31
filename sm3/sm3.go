@@ -4,12 +4,12 @@ import (
     "encoding/binary"
     "fmt"
     "hash"
+    "math/bits"
 )
 
 const (
     DigestLength = 32
     BlockSize    = 16
-    ByteLength   = 64
 )
 
 var gT = []uint32{
@@ -33,19 +33,19 @@ type sm3Digest struct {
 }
 
 func New() hash.Hash {
-    d := new(sm3Digest)
-    d.Reset()
-    return d
+    digest := new(sm3Digest)
+    digest.Reset()
+    return digest
 }
 
-func (d *sm3Digest) Sum(b []byte) []byte {
-    d1 := d
-    hash := d1.checkSum()
-    return append(b, hash[:]...)
+func (digest *sm3Digest) Sum(b []byte) []byte {
+    d1 := digest
+    h := d1.checkSum()
+    return append(b, h[:]...)
 }
 
 // Size returns the number of bytes Sum will return.
-func (d *sm3Digest) Size() int {
+func (digest *sm3Digest) Size() int {
     return DigestLength
 }
 
@@ -53,137 +53,125 @@ func (d *sm3Digest) Size() int {
 // The Write method must be able to accept any amount
 // of data, but it may operate more efficiently if all writes
 // are a multiple of the block size.
-func (d *sm3Digest) BlockSize() int {
+func (digest *sm3Digest) BlockSize() int {
     return BlockSize
 }
 
-func (d *sm3Digest) Reset() {
-    d.byteCount = 0
+func (digest *sm3Digest) Reset() {
+    digest.byteCount = 0
 
-    d.xBufOff = 0
-    for i := 0; i < len(d.xBuf); i++ {
-        d.xBuf[i] = 0
+    digest.xBufOff = 0
+    for i := 0; i < len(digest.xBuf); i++ {
+        digest.xBuf[i] = 0
     }
 
-    for i := 0; i < len(d.inWords); i++ {
-        d.inWords[i] = 0
+    for i := 0; i < len(digest.inWords); i++ {
+        digest.inWords[i] = 0
     }
 
-    for i := 0; i < len(d.w); i++ {
-        d.w[i] = 0;
+    for i := 0; i < len(digest.w); i++ {
+        digest.w[i] = 0;
     }
 
-    d.v[0] = 0x7380166F
-    d.v[1] = 0x4914B2B9
-    d.v[2] = 0x172442D7
-    d.v[3] = 0xDA8A0600
-    d.v[4] = 0xA96F30BC
-    d.v[5] = 0x163138AA
-    d.v[6] = 0xE38DEE4D
-    d.v[7] = 0xB0FB0E4E
+    digest.v[0] = 0x7380166F
+    digest.v[1] = 0x4914B2B9
+    digest.v[2] = 0x172442D7
+    digest.v[3] = 0xDA8A0600
+    digest.v[4] = 0xA96F30BC
+    digest.v[5] = 0x163138AA
+    digest.v[6] = 0xE38DEE4D
+    digest.v[7] = 0xB0FB0E4E
 
-    d.xOff = 0
+    digest.xOff = 0
 }
 
-func (d *sm3Digest) Write(p []byte) (n int, err error) {
+func (digest *sm3Digest) Write(p []byte) (n int, err error) {
     _ = p[0]
-    len := len(p)
+    inLen := len(p)
 
-    //
-    // fill the current word
-    //
     i := 0
-    if d.xBufOff != 0 {
-        for i < len {
-            d.xBuf[d.xBufOff] = p[i]
-            d.xBufOff++
+    if digest.xBufOff != 0 {
+        for i < inLen {
+            digest.xBuf[digest.xBufOff] = p[i]
+            digest.xBufOff++
             i++
-            if d.xBufOff == 4 {
-                d.processWord(d.xBuf[:], 0)
-                d.xBufOff = 0
+            if digest.xBufOff == 4 {
+                digest.processWord(digest.xBuf[:], 0)
+                digest.xBufOff = 0
                 break
             }
         }
     }
 
-    //
-    // process whole words.
-    //
-    limit := ((len - i) & ^3) + i
+    limit := ((inLen - i) & ^3) + i
     for ; i < limit; i += 4 {
-        d.processWord(p, int32(i))
+        digest.processWord(p, int32(i))
     }
 
-    //
-    // load in the remainder.
-    //
-    for i < len {
-        d.xBuf[d.xBufOff] = p[i]
-        d.xBufOff++
+    for i < inLen {
+        digest.xBuf[digest.xBufOff] = p[i]
+        digest.xBufOff++
         i++
     }
 
-    d.byteCount += int64(len)
+    digest.byteCount += int64(inLen)
 
-    n = len
+    n = inLen
     return
 }
 
-func (d *sm3Digest) finish() {
-    bitLength := d.byteCount << 3
+func (digest *sm3Digest) finish() {
+    bitLength := digest.byteCount << 3
 
-    //
-    // add the pad bytes.
-    //
-    d.Write([]byte{128})
+    digest.Write([]byte{128})
 
-    for d.xBufOff != 0 {
-        d.Write([]byte{0})
+    for digest.xBufOff != 0 {
+        digest.Write([]byte{0})
     }
 
-    d.processLength(bitLength)
+    digest.processLength(bitLength)
 
-    d.processBlock()
+    digest.processBlock()
 }
 
-func (d *sm3Digest) checkSum() [DigestLength]byte {
-    d.finish()
-    vlen := len(d.v)
+func (digest *sm3Digest) checkSum() [DigestLength]byte {
+    digest.finish()
+    vlen := len(digest.v)
     var out [DigestLength]byte
     for i := 0; i < vlen; i++ {
-        binary.BigEndian.PutUint32(out[i*4:(i+1)*4], d.v[i])
+        binary.BigEndian.PutUint32(out[i*4:(i+1)*4], digest.v[i])
     }
     return out
 }
 
-func (d *sm3Digest) processBlock() {
+func (digest *sm3Digest) processBlock() {
     for j := 0; j < 16; j++ {
-        d.w[j] = d.inWords[j]
+        digest.w[j] = digest.inWords[j]
     }
     for j := 16; j < 68; j++ {
-        wj3 := d.w[j-3]
+        wj3 := digest.w[j-3]
         r15 := (wj3 << 15) | (wj3 >> (32 - 15))
-        wj13 := d.w[j-13]
+        wj13 := digest.w[j-13]
         r7 := (wj13 << 7) | (wj13 >> (32 - 7))
-        d.w[j] = p1(d.w[j-16]^d.w[j-9]^r15) ^ r7 ^ d.w[j-6]
+        digest.w[j] = p1(digest.w[j-16]^digest.w[j-9]^r15) ^ r7 ^ digest.w[j-6]
     }
 
-    A := d.v[0]
-    B := d.v[1]
-    C := d.v[2]
-    D := d.v[3]
-    E := d.v[4]
-    F := d.v[5]
-    G := d.v[6]
-    H := d.v[7]
+    A := digest.v[0]
+    B := digest.v[1]
+    C := digest.v[2]
+    D := digest.v[3]
+    E := digest.v[4]
+    F := digest.v[5]
+    G := digest.v[6]
+    H := digest.v[7]
 
     for j := 0; j < 16; j++ {
         a12 := (A << 12) | (A >> (32 - 12))
         s1 := a12 + E + gT[j]
         SS1 := (s1 << 7) | (s1 >> (32 - 7))
         SS2 := SS1 ^ a12
-        Wj := d.w[j]
-        W1j := Wj ^ d.w[j+4]
+        Wj := digest.w[j]
+        W1j := Wj ^ digest.w[j+4]
         TT1 := ff0(A, B, C) + D + SS2 + W1j
         TT2 := gg0(E, F, G) + H + SS1 + Wj
         D = C
@@ -196,14 +184,13 @@ func (d *sm3Digest) processBlock() {
         E = p0(TT2)
     }
 
-    // Different FF,GG functions on rounds 16..63
     for j := 16; j < 64; j++ {
         a12 := (A << 12) | (A >> (32 - 12))
         s1 := a12 + E + gT[j]
         SS1 := (s1 << 7) | (s1 >> (32 - 7))
         SS2 := SS1 ^ a12
-        Wj := d.w[j]
-        W1j := Wj ^ d.w[j+4]
+        Wj := digest.w[j]
+        W1j := Wj ^ digest.w[j+4]
         TT1 := ff1(A, B, C) + D + SS2 + W1j
         TT2 := gg1(E, F, G) + H + SS1 + Wj
         D = C
@@ -216,60 +203,56 @@ func (d *sm3Digest) processBlock() {
         E = p0(TT2)
     }
 
-    d.v[0] ^= A
-    d.v[1] ^= B
-    d.v[2] ^= C
-    d.v[3] ^= D
-    d.v[4] ^= E
-    d.v[5] ^= F
-    d.v[6] ^= G
-    d.v[7] ^= H
+    digest.v[0] ^= A
+    digest.v[1] ^= B
+    digest.v[2] ^= C
+    digest.v[3] ^= D
+    digest.v[4] ^= E
+    digest.v[5] ^= F
+    digest.v[6] ^= G
+    digest.v[7] ^= H
 
-    d.xOff = 0
+    digest.xOff = 0
 }
 
-func (d *sm3Digest) processWord(in []byte, inOff int32) {
-    // Note: Inlined for performance
-    // this.inwords[xOff] = Pack.bigEndianToInt(in, inOff);
+func (digest *sm3Digest) processWord(in []byte, inOff int32) {
     n := binary.BigEndian.Uint32(in[inOff : inOff+4])
 
-    d.inWords[d.xOff] = n
-    d.xOff++
+    digest.inWords[digest.xOff] = n
+    digest.xOff++
 
-    if d.xOff >= 16 {
-        d.processBlock()
+    if digest.xOff >= 16 {
+        digest.processBlock()
     }
 }
 
-func (d *sm3Digest) processLength(bitLength int64) {
-    if d.xOff > (BlockSize - 2) {
-        // xOff == 15  --> can't fit the 64 bit length field at tail..
-        d.inWords[d.xOff] = 0 // fill with zero
-        d.xOff++
+func (digest *sm3Digest) processLength(bitLength int64) {
+    if digest.xOff > (BlockSize - 2) {
+        digest.inWords[digest.xOff] = 0
+        digest.xOff++
 
-        d.processBlock()
-    }
-    // Fill with zero words, until reach 2nd to last slot
-    for ; d.xOff < (BlockSize - 2); d.xOff++ {
-        d.inWords[d.xOff] = 0
+        digest.processBlock()
     }
 
-    // Store input data length in BITS
-    d.inWords[d.xOff] = uint32(bitLength >> 32)
-    d.xOff++
-    d.inWords[d.xOff] = uint32(bitLength)
-    d.xOff++
+    for ; digest.xOff < (BlockSize - 2); digest.xOff++ {
+        digest.inWords[digest.xOff] = 0
+    }
+
+    digest.inWords[digest.xOff] = uint32(bitLength >> 32)
+    digest.xOff++
+    digest.inWords[digest.xOff] = uint32(bitLength)
+    digest.xOff++
 }
 
 func p0(x uint32) uint32 {
-    r9 := (x << 9) | (x >> (32 - 9))
-    r17 := (x << 17) | (x >> (32 - 17))
+    r9 := bits.RotateLeft32(x, 9)
+    r17 := bits.RotateLeft32(x, 17)
     return x ^ r9 ^ r17
 }
 
 func p1(x uint32) uint32 {
-    r15 := (x << 15) | (x >> (32 - 15))
-    r23 := (x << 23) | (x >> (32 - 23))
+    r15 := bits.RotateLeft32(x, 15)
+    r23 := bits.RotateLeft32(x, 23)
     return x ^ r15 ^ r23
 }
 
@@ -305,7 +288,6 @@ func PrintT() {
         fmt.Printf("0x%08X, ", Tj)
     }
 
-    // Different FF,GG functions on rounds 16..63
     for j := 16; j < 64; j++ {
         n := j % 32
         T[j] = 0x7A879D8A

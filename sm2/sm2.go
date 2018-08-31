@@ -223,34 +223,51 @@ func Decrypt(priv *PrivateKey, in []byte) ([]byte, error) {
     return c2, nil
 }
 
-func getZ(d hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte) []byte {
-    d.Reset()
+func getZ(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte) []byte {
+    digest.Reset()
 
     userIdLen := uint16(len(userId) * 8)
     var userIdLenBytes [2]byte
     binary.BigEndian.PutUint16(userIdLenBytes[:], userIdLen)
-    d.Write(userIdLenBytes[:])
+    digest.Write(userIdLenBytes[:])
     if userId != nil && len(userId) > 0 {
-        d.Write(userId)
+        digest.Write(userId)
     }
 
-    d.Write(curve.A.Bytes())
-    d.Write(curve.B.Bytes())
-    d.Write(curve.Gx.Bytes())
-    d.Write(curve.Gy.Bytes())
-    d.Write(pubX.Bytes())
-    d.Write(pubY.Bytes())
-    return d.Sum(nil)
+    digest.Write(curve.A.Bytes())
+    digest.Write(curve.B.Bytes())
+    digest.Write(curve.Gx.Bytes())
+    digest.Write(curve.Gy.Bytes())
+    digest.Write(pubX.Bytes())
+    digest.Write(pubY.Bytes())
+    return digest.Sum(nil)
 }
 
-func caculateE(d hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte, src []byte) *big.Int {
-    z := getZ(d, curve, pubX, pubY, userId)
+func caculateE(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte, src []byte) *big.Int {
+    z := getZ(digest, curve, pubX, pubY, userId)
 
-    d.Reset()
-    d.Write(z)
-    d.Write(src)
-    eHash := d.Sum(nil)
+    digest.Reset()
+    digest.Write(z)
+    digest.Write(src)
+    eHash := digest.Sum(nil)
     return new(big.Int).SetBytes(eHash)
+}
+
+func MarshalSign(r, s *big.Int) ([]byte, error) {
+    result, err := asn1.Marshal(sm2Signature{r, s})
+    if err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+func UnmarshalSign(sign []byte) (r, s *big.Int, err error)  {
+    sm2Sign := new(sm2Signature)
+    _, err = asn1.Unmarshal(sign, sm2Sign)
+    if err != nil {
+        return nil, nil, err
+    }
+    return sm2Sign.R, sm2Sign.S, nil
 }
 
 func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
@@ -296,25 +313,20 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
         }
     }
 
-    result, err := asn1.Marshal(sm2Signature{r, s})
-    if err != nil {
-        return nil, err
-    }
-    return result, nil
+    return MarshalSign(r, s)
 }
 
 func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
-    sm2Sign := new(sm2Signature)
-    _, err := asn1.Unmarshal(sign, sm2Sign)
+    r, s, err := UnmarshalSign(sign)
     if err != nil {
         return false
     }
 
     intOne := new(big.Int).SetInt64(1)
-    if sm2Sign.R.Cmp(intOne) == -1 || sm2Sign.R.Cmp(pub.Curve.N) >= 0 {
+    if r.Cmp(intOne) == -1 || r.Cmp(pub.Curve.N) >= 0 {
         return false
     }
-    if sm2Sign.S.Cmp(intOne) == -1 || sm2Sign.S.Cmp(pub.Curve.N) >= 0 {
+    if s.Cmp(intOne) == -1 || s.Cmp(pub.Curve.N) >= 0 {
         return false
     }
 
@@ -325,13 +337,13 @@ func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
     e := caculateE(digest, &pub.Curve, pub.X, pub.Y, userId, src)
 
     intZero := new(big.Int).SetInt64(0)
-    t := util.Add(sm2Sign.R, sm2Sign.S)
+    t := util.Add(r, s)
     t = util.Mod(t, pub.Curve.N)
     if t.Cmp(intZero) == 0 {
         return false
     }
 
-    sgx, sgy := pub.Curve.ScalarBaseMult(sm2Sign.S.Bytes())
+    sgx, sgy := pub.Curve.ScalarBaseMult(s.Bytes())
     tpx, tpy := pub.Curve.ScalarMult(pub.X, pub.Y, t.Bytes())
     x, y := pub.Curve.Add(sgx, sgy, tpx, tpy)
     if util.IsEcPointInfinity(x, y) {
@@ -340,5 +352,5 @@ func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
 
     expectedR := util.Add(e, x)
     expectedR = util.Mod(expectedR, pub.Curve.N)
-    return expectedR.Cmp(sm2Sign.R) == 0
+    return expectedR.Cmp(r) == 0
 }

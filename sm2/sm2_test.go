@@ -64,6 +64,50 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 }
 
+func TestCipherDerEncode(t *testing.T) {
+	src := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	priv, pub, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	cipherText, err := Encrypt(pub, src)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("cipher text:%s\n", hex.EncodeToString(cipherText))
+
+	derCipher, err := MarshalCipher(cipherText)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	//err = ioutil.WriteFile("derCipher.dat", derCipher, 0644)
+	//if err != nil {
+	//	t.Error(err.Error())
+	//	return
+	//}
+	cipherText, err = UnmarshalCipher(derCipher)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	plainText, err := Decrypt(priv, cipherText)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("plain text:%s\n", hex.EncodeToString(plainText))
+
+	if !bytes.Equal(plainText, src) {
+		t.Error("decrypt result not equal expected")
+		return
+	}
+}
+
 type testSm2SignData struct {
 	d    string
 	x    string

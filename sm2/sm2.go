@@ -46,6 +46,12 @@ type sm2Signature struct {
 	R, S *big.Int
 }
 
+type sm2Cipher struct {
+	X, Y *big.Int
+	C3 []byte
+	C2 []byte
+}
+
 func init() {
 	initSm2P256V1()
 }
@@ -221,6 +227,68 @@ func Decrypt(priv *PrivateKey, in []byte) ([]byte, error) {
 		return nil, errors.New("invalid cipher text")
 	}
 	return c2, nil
+}
+
+func MarshalCipher(in []byte) ([]byte, error) {
+	byteLen := (sm2P256V1.Params().BitSize + 7) >> 3
+	c1x := make([]byte, byteLen)
+	c1y := make([]byte, byteLen)
+	c2Len := len(in) - (1 + byteLen * 2) - sm3.DigestLength
+	c2 := make([]byte, c2Len)
+	c3 := make([]byte, sm3.DigestLength)
+	pos := 1
+
+	copy(c1x, in[pos:pos+byteLen])
+	pos += byteLen
+
+	copy(c1y, in[pos:pos+byteLen])
+	pos += byteLen
+
+	copy(c2, in[pos:pos+c2Len])
+	pos += c2Len
+
+	copy(c3, in[pos:pos+sm3.DigestLength])
+
+	nc1x := new(big.Int).SetBytes(c1x)
+	nc1y := new(big.Int).SetBytes(c1y)
+	result, err := asn1.Marshal(sm2Cipher{nc1x, nc1y, c3, c2})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func UnmarshalCipher(in []byte) (out []byte, err error) {
+	cipher := new(sm2Cipher)
+	_, err = asn1.Unmarshal(in, cipher)
+	if err != nil {
+		return nil, err
+	}
+
+	c1x := cipher.X.Bytes()
+	c1y := cipher.Y.Bytes()
+	c1xLen := len(c1x)
+	c1yLen := len(c1y)
+	c2Len := len(cipher.C2)
+	c3Len := len(cipher.C3)
+	result := make([]byte, 1 + c1xLen + c1yLen + c2Len + c3Len)
+	pos := 0
+
+	result[pos] = 4
+	pos += 1
+
+	copy(result[pos:pos+c1xLen], c1x)
+	pos += c1xLen
+
+	copy(result[pos:pos+c1yLen], c1y)
+	pos += c1yLen
+
+	copy(result[pos:pos+c2Len], cipher.C2)
+	pos += c2Len
+
+	copy(result[pos:pos+c3Len], cipher.C3)
+
+	return result, nil
 }
 
 func getZ(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte) []byte {

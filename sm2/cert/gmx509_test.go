@@ -1,6 +1,7 @@
 package cert
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -55,4 +56,21 @@ func TestCreateCertificateRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	ioutil.WriteFile("sample.csr", derBytes, 0644)
+
+	csr, err := ParseCertificateRequest(derBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csrPub := csr.PublicKey.(*sm2.PublicKey)
+	if !bytes.Equal(pub.GetUnCompressBytes(), csrPub.GetUnCompressBytes()) {
+		t.Fatal("public key not equals")
+	}
+
+	b, err := VerifyCSRSign(derBytes, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b {
+		t.Fatal("Verify CSR sign not pass")
+	}
 }

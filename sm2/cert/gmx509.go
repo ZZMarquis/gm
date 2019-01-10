@@ -1,12 +1,16 @@
 package cert
 
 import (
+	"crypto/elliptic"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/zz/gm/sm2"
 )
@@ -219,7 +223,7 @@ func oidInExtensions(oid asn1.ObjectIdentifier, extensions []pkix.Extension) boo
 }
 
 func marshalPublicKey(pub *sm2.PublicKey) (publicKeyBytes []byte, publicKeyAlgorithm pkix.AlgorithmIdentifier, err error) {
-	publicKeyBytes = pub.GetRawBytes()
+	publicKeyBytes = pub.GetUnCompressBytes()
 
 	publicKeyAlgorithm.Algorithm = oidPublicKeyECDSA
 	var paramBytes []byte
@@ -246,4 +250,270 @@ func newRawAttributes(attributes []pkix.AttributeTypeAndValueSET) ([]asn1.RawVal
 		return nil, errors.New("x509: failed to unmarshal raw CSR Attributes")
 	}
 	return rawAttributes, nil
+}
+
+// ParseCertificateRequest parses a single certificate request from the
+// given ASN.1 DER data.
+func ParseCertificateRequest(asn1Data []byte) (*x509.CertificateRequest, error) {
+	var csr certificateRequest
+
+	rest, err := asn1.Unmarshal(asn1Data, &csr)
+	if err != nil {
+		return nil, err
+	} else if len(rest) != 0 {
+		return nil, asn1.SyntaxError{Msg: "trailing data"}
+	}
+
+	return parseCertificateRequest(&csr)
+}
+
+func parseCertificateRequest(in *certificateRequest) (*x509.CertificateRequest, error) {
+	out := &x509.CertificateRequest{
+		Raw: in.Raw,
+		RawTBSCertificateRequest: in.TBSCSR.Raw,
+		RawSubjectPublicKeyInfo:  in.TBSCSR.PublicKey.Raw,
+		RawSubject:               in.TBSCSR.Subject.FullBytes,
+
+		Signature:          in.SignatureValue.RightAlign(),
+		SignatureAlgorithm: 0, //与x509.go里的实现不一样，因为这里都是固定了使用SM3WithSM2
+
+		PublicKeyAlgorithm: 0, //与x509.go里的实现不一样，因为这里都是固定了使用EC公钥
+
+		Version:    in.TBSCSR.Version,
+		Attributes: parseRawAttributes(in.TBSCSR.RawAttributes),
+	}
+
+	if !oidSignatureSM3WithSM2.Equal(in.SignatureAlgorithm.Algorithm) {
+		return nil, errors.New("x509: illegal signature algorithm OID")
+	}
+	if !oidPublicKeyECDSA.Equal(in.TBSCSR.PublicKey.Algorithm.Algorithm) {
+		return nil, errors.New("x509: illegal publick key algorithm OID")
+	}
+
+	var err error
+	out.PublicKey, err = parsePublicKey(&in.TBSCSR.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var subject pkix.RDNSequence
+	if rest, err := asn1.Unmarshal(in.TBSCSR.Subject.FullBytes, &subject); err != nil {
+		return nil, err
+	} else if len(rest) != 0 {
+		return nil, errors.New("x509: trailing data after X.509 Subject")
+	}
+
+	out.Subject.FillFromRDNSequence(&subject)
+
+	if out.Extensions, err = parseCSRExtensions(in.TBSCSR.RawAttributes); err != nil {
+		return nil, err
+	}
+
+	for _, extension := range out.Extensions {
+		if extension.Id.Equal(oidExtensionSubjectAltName) {
+			out.DNSNames, out.EmailAddresses, out.IPAddresses, out.URIs, err = parseSANExtension(extension.Value)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return out, nil
+}
+
+func parsePublicKey(keyData *publicKeyInfo) (interface{}, error) {
+	paramsData := keyData.Algorithm.Parameters.FullBytes
+	namedCurveOID := new(asn1.ObjectIdentifier)
+	rest, err := asn1.Unmarshal(paramsData, namedCurveOID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) != 0 {
+		return nil, errors.New("x509: trailing data after SM2 parameters")
+	}
+	if !oidSM2P256V1.Equal(*namedCurveOID) {
+		return nil, errors.New("x509: CurveOID is not the OID of SM2P256V1")
+	}
+
+	curve := sm2.GetSm2P256V1()
+	x, y := elliptic.Unmarshal(curve, keyData.PublicKey.RightAlign())
+	if x == nil || y == nil {
+		return nil, errors.New("x509: Unmarshal PublicKey failed")
+	}
+	pub := &sm2.PublicKey{
+		Curve: curve,
+		X:     x,
+		Y:     y,
+	}
+	return pub, nil
+}
+
+// parseRawAttributes Unmarshals RawAttributes intos AttributeTypeAndValueSETs.
+func parseRawAttributes(rawAttributes []asn1.RawValue) []pkix.AttributeTypeAndValueSET {
+	var attributes []pkix.AttributeTypeAndValueSET
+	for _, rawAttr := range rawAttributes {
+		var attr pkix.AttributeTypeAndValueSET
+		rest, err := asn1.Unmarshal(rawAttr.FullBytes, &attr)
+		// Ignore attributes that don't parse into pkix.AttributeTypeAndValueSET
+		// (i.e.: challengePassword or unstructuredName).
+		if err == nil && len(rest) == 0 {
+			attributes = append(attributes, attr)
+		}
+	}
+	return attributes
+}
+
+// parseCSRExtensions parses the attributes from a CSR and extracts any
+// requested extensions.
+func parseCSRExtensions(rawAttributes []asn1.RawValue) ([]pkix.Extension, error) {
+	// pkcs10Attribute reflects the Attribute structure from section 4.1 of
+	// https://tools.ietf.org/html/rfc2986.
+	type pkcs10Attribute struct {
+		Id     asn1.ObjectIdentifier
+		Values []asn1.RawValue `asn1:"set"`
+	}
+
+	var ret []pkix.Extension
+	for _, rawAttr := range rawAttributes {
+		var attr pkcs10Attribute
+		if rest, err := asn1.Unmarshal(rawAttr.FullBytes, &attr); err != nil || len(rest) != 0 || len(attr.Values) == 0 {
+			// Ignore attributes that don't parse.
+			continue
+		}
+
+		if !attr.Id.Equal(oidExtensionRequest) {
+			continue
+		}
+
+		var extensions []pkix.Extension
+		if _, err := asn1.Unmarshal(attr.Values[0].FullBytes, &extensions); err != nil {
+			return nil, err
+		}
+		ret = append(ret, extensions...)
+	}
+
+	return ret, nil
+}
+
+func forEachSAN(extension []byte, callback func(tag int, data []byte) error) error {
+	// RFC 5280, 4.2.1.6
+
+	// SubjectAltName ::= GeneralNames
+	//
+	// GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
+	//
+	// GeneralName ::= CHOICE {
+	//      otherName                       [0]     OtherName,
+	//      rfc822Name                      [1]     IA5String,
+	//      dNSName                         [2]     IA5String,
+	//      x400Address                     [3]     ORAddress,
+	//      directoryName                   [4]     Name,
+	//      ediPartyName                    [5]     EDIPartyName,
+	//      uniformResourceIdentifier       [6]     IA5String,
+	//      iPAddress                       [7]     OCTET STRING,
+	//      registeredID                    [8]     OBJECT IDENTIFIER }
+	var seq asn1.RawValue
+	rest, err := asn1.Unmarshal(extension, &seq)
+	if err != nil {
+		return err
+	} else if len(rest) != 0 {
+		return errors.New("x509: trailing data after X.509 extension")
+	}
+	if !seq.IsCompound || seq.Tag != 16 || seq.Class != 0 {
+		return asn1.StructuralError{Msg: "bad SAN sequence"}
+	}
+
+	rest = seq.Bytes
+	for len(rest) > 0 {
+		var v asn1.RawValue
+		rest, err = asn1.Unmarshal(rest, &v)
+		if err != nil {
+			return err
+		}
+
+		if err := callback(v.Tag, v.Bytes); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// domainToReverseLabels converts a textual domain name like foo.example.com to
+// the list of labels in reverse order, e.g. ["com", "example", "foo"].
+func domainToReverseLabels(domain string) (reverseLabels []string, ok bool) {
+	for len(domain) > 0 {
+		if i := strings.LastIndexByte(domain, '.'); i == -1 {
+			reverseLabels = append(reverseLabels, domain)
+			domain = ""
+		} else {
+			reverseLabels = append(reverseLabels, domain[i+1:])
+			domain = domain[:i]
+		}
+	}
+
+	if len(reverseLabels) > 0 && len(reverseLabels[0]) == 0 {
+		// An empty label at the end indicates an absolute value.
+		return nil, false
+	}
+
+	for _, label := range reverseLabels {
+		if len(label) == 0 {
+			// Empty labels are otherwise invalid.
+			return nil, false
+		}
+
+		for _, c := range label {
+			if c < 33 || c > 126 {
+				// Invalid character.
+				return nil, false
+			}
+		}
+	}
+
+	return reverseLabels, true
+}
+
+func parseSANExtension(value []byte) (dnsNames, emailAddresses []string, ipAddresses []net.IP, uris []*url.URL, err error) {
+	err = forEachSAN(value, func(tag int, data []byte) error {
+		switch tag {
+		case nameTypeEmail:
+			emailAddresses = append(emailAddresses, string(data))
+		case nameTypeDNS:
+			dnsNames = append(dnsNames, string(data))
+		case nameTypeURI:
+			uri, err := url.Parse(string(data))
+			if err != nil {
+				return fmt.Errorf("x509: cannot parse URI %q: %s", string(data), err)
+			}
+			if len(uri.Host) > 0 {
+				if _, ok := domainToReverseLabels(uri.Host); !ok {
+					return fmt.Errorf("x509: cannot parse URI %q: invalid domain", string(data))
+				}
+			}
+			uris = append(uris, uri)
+		case nameTypeIP:
+			switch len(data) {
+			case net.IPv4len, net.IPv6len:
+				ipAddresses = append(ipAddresses, data)
+			default:
+				return errors.New("x509: cannot parse IP address of length " + strconv.Itoa(len(data)))
+			}
+		}
+
+		return nil
+	})
+
+	return
+}
+
+func VerifyCSRSign(asn1Data []byte, userId []byte) (bool, error) {
+	csr, err := ParseCertificateRequest(asn1Data)
+	if err != nil {
+		return false, err
+	}
+
+	pub := csr.PublicKey.(*sm2.PublicKey)
+
+	return sm2.Verify(pub, userId, csr.RawTBSCertificateRequest, csr.Signature), nil
 }

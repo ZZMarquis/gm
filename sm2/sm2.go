@@ -16,7 +16,9 @@ import (
 )
 
 const (
-	BitSize = 256
+	BitSize    = 256
+	KeyBytes   = (BitSize + 7) / 8
+	UnCompress = 0x04
 )
 
 var (
@@ -93,43 +95,68 @@ func GenerateKey(rand io.Reader) (*PrivateKey, *PublicKey, error) {
 	return privateKey, publicKey, nil
 }
 
-func (pub *PublicKey) GetRawBytes() []byte {
+func RawBytesToPublicKey(bytes []byte) (*PublicKey, error) {
+	if len(bytes) != KeyBytes*2 {
+		return nil, errors.New("Public key raw bytes length must be " + string(KeyBytes*2))
+	}
+	publicKey := new(PublicKey)
+	publicKey.Curve = sm2P256V1
+	publicKey.X = new(big.Int).SetBytes(bytes[:KeyBytes])
+	publicKey.Y = new(big.Int).SetBytes(bytes[KeyBytes:])
+	return publicKey, nil
+}
+
+func RawBytesToPrivateKey(bytes []byte) (*PrivateKey, error) {
+	if len(bytes) != KeyBytes {
+		return nil, errors.New("Private key raw bytes length must be " + string(KeyBytes))
+	}
+	privateKey := new(PrivateKey)
+	privateKey.Curve = sm2P256V1
+	privateKey.D = new(big.Int).SetBytes(bytes)
+	return privateKey, nil
+}
+
+func (pub *PublicKey) GetUnCompressBytes() []byte {
 	xBytes := pub.X.Bytes()
 	yBytes := pub.Y.Bytes()
-	size := (BitSize + 7) / 8
 	xl := len(xBytes)
 	yl := len(yBytes)
 
-	raw := make([]byte, size*2)
-	if xl > size {
-		copy(raw[:size], xBytes[xl-size:])
-	} else if xl < size {
-		copy(raw[size-xl:size], xBytes)
+	raw := make([]byte, 1+KeyBytes*2)
+	raw[0] = UnCompress
+	if xl > KeyBytes {
+		copy(raw[1:1+KeyBytes], xBytes[xl-KeyBytes:])
+	} else if xl < KeyBytes {
+		copy(raw[1+(KeyBytes-xl):1+KeyBytes], xBytes)
 	} else {
-		copy(raw[:size], xBytes)
+		copy(raw[1:1+KeyBytes], xBytes)
 	}
 
-	if yl > size {
-		copy(raw[size:], yBytes[yl-size:])
-	} else if xl < size {
-		copy(raw[size+(size-yl):], yBytes)
+	if yl > KeyBytes {
+		copy(raw[1+KeyBytes:], yBytes[yl-KeyBytes:])
+	} else if xl < KeyBytes {
+		copy(raw[1+KeyBytes+(KeyBytes-yl):], yBytes)
 	} else {
-		copy(raw[size:], yBytes)
+		copy(raw[1+KeyBytes:], yBytes)
 	}
 	return raw
+}
+
+func (pub *PublicKey) GetRawBytes() []byte {
+	raw := pub.GetUnCompressBytes()
+	return raw[1:]
 }
 
 func (pri *PrivateKey) GetRawBytes() []byte {
 	dBytes := pri.D.Bytes()
 	dl := len(dBytes)
-	size := (BitSize + 7) / 8
-	if dl > size {
-		raw := make([]byte, size)
-		copy(raw, dBytes[dl-size:])
+	if dl > KeyBytes {
+		raw := make([]byte, KeyBytes)
+		copy(raw, dBytes[dl-KeyBytes:])
 		return raw
-	} else if dl < size {
-		raw := make([]byte, size)
-		copy(raw[size-dl:], dBytes)
+	} else if dl < KeyBytes {
+		raw := make([]byte, KeyBytes)
+		copy(raw[KeyBytes-dl:], dBytes)
 		return raw
 	} else {
 		return dBytes

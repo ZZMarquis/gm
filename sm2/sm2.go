@@ -225,7 +225,7 @@ func kdf(digest hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
 func notEncrypted(encData []byte, in []byte) bool {
 	encDataLen := len(encData)
 	for i := 0; i != encDataLen; i++ {
-		if encData[i] != in[0] {
+		if encData[i] != in[i] {
 			return false
 		}
 	}

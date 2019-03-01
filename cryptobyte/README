@@ -1,1 +1,1 @@
-这个包下的代码全部copy自SDK中的golang_org/x/crypto/cryptobyte包，这个包不对应用开发，所以只好全部copy过来
+这个包下的代码全部copy自SDK中的golang_org/x/crypto/cryptobyte包，这个包不对应用开放，所以只好全部copy过来

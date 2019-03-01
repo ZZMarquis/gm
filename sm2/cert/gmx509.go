@@ -1040,14 +1040,7 @@ func IssueCertificateBySoftCAKey(cinfo *TBSCertificate, caPri *sm2.PrivateKey, u
 	if err != nil {
 		return nil, err
 	}
-	var sigAlgo pkix.AlgorithmIdentifier
-	sigAlgo.Algorithm = oidSignatureSM3WithSM2
-	return asn1.Marshal(certificate{
-		nil,
-		*cinfo,
-		sigAlgo,
-		asn1.BitString{Bytes: signature, BitLength: len(signature) * 8},
-	})
+	return CreateCertificate(cinfo, signature)
 }
 
 func CreateCertificate(cinfo *TBSCertificate, signature []byte) ([]byte, error) {

@@ -5,7 +5,7 @@ import (
 	"crypto/cipher"
 	"encoding/hex"
 	"fmt"
-	"github.com/zz/gm/util"
+	"github.com/ZZMarquis/gm/util"
 	"testing"
 )
 

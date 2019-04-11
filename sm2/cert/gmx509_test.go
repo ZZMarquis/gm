@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zz/gm/sm2"
+	"github.com/ZZMarquis/gm/sm2"
 )
 
 func TestX500Name(t *testing.T) {
@@ -134,7 +134,7 @@ func TestCreateCertificate(t *testing.T) {
 		UnknownExtKeyUsage: testUnknownExtKeyUsage,
 
 		BasicConstraintsValid: true,
-		IsCA: true,
+		IsCA:                  true,
 
 		OCSPServer:            []string{"http://ocsp.example.com"},
 		IssuingCertificateURL: []string{"http://crt.example.com/ca1.crt"},

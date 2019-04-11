@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"github.com/zz/gm/sm3"
-	"github.com/zz/gm/util"
+	"github.com/ZZMarquis/gm/sm3"
+	"github.com/ZZMarquis/gm/util"
 	"hash"
 	"math/big"
 )

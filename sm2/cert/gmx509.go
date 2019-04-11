@@ -16,9 +16,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/zz/gm/cryptobyte"
-	cryptobyte_asn1 "github.com/zz/gm/cryptobyte/asn1"
-	"github.com/zz/gm/sm2"
+	"github.com/ZZMarquis/gm/cryptobyte"
+	cryptobyte_asn1 "github.com/ZZMarquis/gm/cryptobyte/asn1"
+	"github.com/ZZMarquis/gm/sm2"
 )
 
 var (
@@ -287,7 +287,7 @@ func ParseCertificateRequest(asn1Data []byte) (*x509.CertificateRequest, error) 
 
 func parseCertificateRequest(in *certificateRequest) (*x509.CertificateRequest, error) {
 	out := &x509.CertificateRequest{
-		Raw: in.Raw,
+		Raw:                      in.Raw,
 		RawTBSCertificateRequest: in.TBSCSR.Raw,
 		RawSubjectPublicKeyInfo:  in.TBSCSR.PublicKey.Raw,
 		RawSubject:               in.TBSCSR.Subject.FullBytes,

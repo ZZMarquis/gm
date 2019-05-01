@@ -46,6 +46,6 @@ func SetBit(x *big.Int, i int, b uint) *big.Int {
 
 func And(x, y *big.Int) *big.Int {
 	var z big.Int
-	z.Add(x, y)
+	z.And(x, y)
 	return &z
 }

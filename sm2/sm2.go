@@ -134,7 +134,7 @@ func (pub *PublicKey) GetUnCompressBytes() []byte {
 
 	if yl > KeyBytes {
 		copy(raw[1+KeyBytes:], yBytes[yl-KeyBytes:])
-	} else if xl < KeyBytes {
+	} else if yl < KeyBytes {
 		copy(raw[1+KeyBytes+(KeyBytes-yl):], yBytes)
 	} else {
 		copy(raw[1+KeyBytes:], yBytes)

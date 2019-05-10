@@ -345,7 +345,7 @@ func UnmarshalCipher(in []byte) (out []byte, err error) {
 	result := make([]byte, 1+c1xLen+c1yLen+c2Len+c3Len)
 	pos := 0
 
-	result[pos] = 4
+	result[pos] = UnCompress
 	pos += 1
 
 	copy(result[pos:pos+c1xLen], c1x)
@@ -409,7 +409,7 @@ func UnmarshalSign(sign []byte) (r, s *big.Int, err error) {
 	return sm2Sign.R, sm2Sign.S, nil
 }
 
-func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
+func SignToRS(priv *PrivateKey, userId []byte, in []byte) (r, s *big.Int, err error) {
 	digest := sm3.New()
 	pubX, pubY := priv.Curve.ScalarBaseMult(priv.D.Bytes())
 	if userId == nil {
@@ -417,7 +417,6 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
 	}
 	e := caculateE(digest, &priv.Curve, pubX, pubY, userId, in)
 
-	var r, s *big.Int
 	intZero := new(big.Int).SetInt64(0)
 	intOne := new(big.Int).SetInt64(1)
 	for {
@@ -426,7 +425,7 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
 		for {
 			k, err = nextK(rand.Reader, priv.Curve.N)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			px, _ := priv.Curve.ScalarBaseMult(k.Bytes())
 			r = util.Add(e, px)
@@ -452,15 +451,20 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
 		}
 	}
 
+	return r, s, nil
+}
+
+// 签名结果为DER编码的字节数组
+func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
+	r, s, err := SignToRS(priv, userId, in)
+	if err != nil {
+		return nil, err
+	}
+
 	return MarshalSign(r, s)
 }
 
-func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
-	r, s, err := UnmarshalSign(sign)
-	if err != nil {
-		return false
-	}
-
+func VerifyByRS(pub *PublicKey, userId []byte, src []byte, r, s *big.Int) bool  {
 	intOne := new(big.Int).SetInt64(1)
 	if r.Cmp(intOne) == -1 || r.Cmp(pub.Curve.N) >= 0 {
 		return false
@@ -492,4 +496,14 @@ func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
 	expectedR := util.Add(e, x)
 	expectedR = util.Mod(expectedR, pub.Curve.N)
 	return expectedR.Cmp(r) == 0
+}
+
+// 输入签名须为DER编码的字节数组
+func Verify(pub *PublicKey, userId []byte, src []byte, sign []byte) bool {
+	r, s, err := UnmarshalSign(sign)
+	if err != nil {
+		return false
+	}
+
+	return VerifyByRS(pub, userId, src, r, s)
 }

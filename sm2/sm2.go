@@ -163,7 +163,7 @@ func (pri *PrivateKey) GetRawBytes() []byte {
 	}
 }
 
-func caculatePubKey(priv *PrivateKey) *PublicKey {
+func calculatePubKey(priv *PrivateKey) *PublicKey {
 	pub := new(PublicKey)
 	pub.Curve = priv.Curve
 	pub.X, pub.Y = priv.Curve.ScalarBaseMult(priv.D.Bytes())
@@ -382,7 +382,7 @@ func getZ(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, us
 	return digest.Sum(nil)
 }
 
-func caculateE(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte, src []byte) *big.Int {
+func calculateE(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte, src []byte) *big.Int {
 	z := getZ(digest, curve, pubX, pubY, userId)
 
 	digest.Reset()
@@ -415,7 +415,7 @@ func SignToRS(priv *PrivateKey, userId []byte, in []byte) (r, s *big.Int, err er
 	if userId == nil {
 		userId = sm2SignDefaultUserId
 	}
-	e := caculateE(digest, &priv.Curve, pubX, pubY, userId, in)
+	e := calculateE(digest, &priv.Curve, pubX, pubY, userId, in)
 
 	intZero := new(big.Int).SetInt64(0)
 	intOne := new(big.Int).SetInt64(1)
@@ -464,7 +464,7 @@ func Sign(priv *PrivateKey, userId []byte, in []byte) ([]byte, error) {
 	return MarshalSign(r, s)
 }
 
-func VerifyByRS(pub *PublicKey, userId []byte, src []byte, r, s *big.Int) bool  {
+func VerifyByRS(pub *PublicKey, userId []byte, src []byte, r, s *big.Int) bool {
 	intOne := new(big.Int).SetInt64(1)
 	if r.Cmp(intOne) == -1 || r.Cmp(pub.Curve.N) >= 0 {
 		return false
@@ -477,7 +477,7 @@ func VerifyByRS(pub *PublicKey, userId []byte, src []byte, r, s *big.Int) bool  
 	if userId == nil {
 		userId = sm2SignDefaultUserId
 	}
-	e := caculateE(digest, &pub.Curve, pub.X, pub.Y, userId, src)
+	e := calculateE(digest, &pub.Curve, pub.X, pub.Y, userId, src)
 
 	intZero := new(big.Int).SetInt64(0)
 	t := util.Add(r, s)

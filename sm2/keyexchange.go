@@ -25,7 +25,7 @@ func reduce(x *big.Int, w int) *big.Int {
 	return result
 }
 
-func caculateU(w int, selfStaticPriv *PrivateKey, selfEphemeralPriv *PrivateKey, selfEphemeralPub *PublicKey,
+func calculateU(w int, selfStaticPriv *PrivateKey, selfEphemeralPriv *PrivateKey, selfEphemeralPub *PublicKey,
 	otherStaticPub *PublicKey, otherEphemeralPub *PublicKey) (x *big.Int, y *big.Int) {
 	x1 := reduce(selfEphemeralPub.X, w)
 	x2 := reduce(otherEphemeralPub.X, w)
@@ -122,7 +122,7 @@ func CalculateKeyWithConfirmation(initiator bool, keyBits int, confirmationTag [
 
 	w := selfStaticPriv.Curve.BitSize/2 - 1
 	selfEphemeralPub := caculatePubKey(selfEphemeralPriv)
-	ux, uy := caculateU(w, selfStaticPriv, selfEphemeralPriv, selfEphemeralPub, otherStaticPub, otherEphemeralPub)
+	ux, uy := calculateU(w, selfStaticPriv, selfEphemeralPriv, selfEphemeralPub, otherStaticPub, otherEphemeralPub)
 	if initiator {
 		rv := kdfForExch(digest, ux, uy, za, zb, keyBits)
 		innerHash := calculateInnerHash(digest, ux, za, zb, selfEphemeralPub.X, selfEphemeralPub.Y,

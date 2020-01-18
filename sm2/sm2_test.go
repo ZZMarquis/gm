@@ -36,7 +36,7 @@ func TestGenerateKey(t *testing.T) {
 	fmt.Println("x,y is on sm2 Curve")
 }
 
-func TestEncryptDecrypt(t *testing.T) {
+func TestEncryptDecrypt_C1C2C3(t *testing.T) {
 	src := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	priv, pub, err := GenerateKey(rand.Reader)
 	if err != nil {
@@ -48,14 +48,14 @@ func TestEncryptDecrypt(t *testing.T) {
 	fmt.Printf("x:%s\n", hex.EncodeToString(pub.X.Bytes()))
 	fmt.Printf("y:%s\n", hex.EncodeToString(pub.Y.Bytes()))
 
-	cipherText, err := Encrypt(pub, src)
+	cipherText, err := Encrypt(pub, src, C1C2C3)
 	if err != nil {
 		t.Error(err.Error())
 		return
 	}
 	fmt.Printf("cipher text:%s\n", hex.EncodeToString(cipherText))
 
-	plainText, err := Decrypt(priv, cipherText)
+	plainText, err := Decrypt(priv, cipherText, C1C2C3)
 	if err != nil {
 		t.Error(err.Error())
 		return
@@ -68,7 +68,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 }
 
-func TestCipherDerEncode(t *testing.T) {
+func TestEncryptDecrypt_C1C3C2(t *testing.T) {
 	src := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	priv, pub, err := GenerateKey(rand.Reader)
 	if err != nil {
@@ -76,14 +76,46 @@ func TestCipherDerEncode(t *testing.T) {
 		return
 	}
 
-	cipherText, err := Encrypt(pub, src)
+	fmt.Printf("d:%s\n", hex.EncodeToString(priv.D.Bytes()))
+	fmt.Printf("x:%s\n", hex.EncodeToString(pub.X.Bytes()))
+	fmt.Printf("y:%s\n", hex.EncodeToString(pub.Y.Bytes()))
+
+	cipherText, err := Encrypt(pub, src, C1C3C2)
 	if err != nil {
 		t.Error(err.Error())
 		return
 	}
 	fmt.Printf("cipher text:%s\n", hex.EncodeToString(cipherText))
 
-	derCipher, err := MarshalCipher(cipherText)
+	plainText, err := Decrypt(priv, cipherText, C1C3C2)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("plain text:%s\n", hex.EncodeToString(plainText))
+
+	if !bytes.Equal(plainText, src) {
+		t.Error("decrypt result not equal expected")
+		return
+	}
+}
+
+func TestCipherDerEncode_C1C2C3(t *testing.T) {
+	src := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	priv, pub, err := GenerateKey(rand.Reader)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	cipherText, err := Encrypt(pub, src, C1C2C3)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("before DER encode, cipher text:%s\n", hex.EncodeToString(cipherText))
+
+	derCipher, err := MarshalCipher(cipherText, C1C2C3)
 	if err != nil {
 		t.Error(err.Error())
 		return
@@ -93,13 +125,59 @@ func TestCipherDerEncode(t *testing.T) {
 	//	t.Error(err.Error())
 	//	return
 	//}
-	cipherText, err = UnmarshalCipher(derCipher)
+	cipherText, err = UnmarshalCipher(derCipher, C1C2C3)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("after DER decode, cipher text:%s\n", hex.EncodeToString(cipherText))
+
+	plainText, err := Decrypt(priv, cipherText, C1C2C3)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("plain text:%s\n", hex.EncodeToString(plainText))
+
+	if !bytes.Equal(plainText, src) {
+		t.Error("decrypt result not equal expected")
+		return
+	}
+}
+
+func TestCipherDerEncode_C1C3C2(t *testing.T) {
+	src := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	priv, pub, err := GenerateKey(rand.Reader)
 	if err != nil {
 		t.Error(err.Error())
 		return
 	}
 
-	plainText, err := Decrypt(priv, cipherText)
+	cipherText, err := Encrypt(pub, src, C1C3C2)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("before DER encode, cipher text:%s\n", hex.EncodeToString(cipherText))
+
+	derCipher, err := MarshalCipher(cipherText, C1C3C2)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	//err = ioutil.WriteFile("derCipher.dat", derCipher, 0644)
+	//if err != nil {
+	//	t.Error(err.Error())
+	//	return
+	//}
+	cipherText, err = UnmarshalCipher(derCipher, C1C3C2)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("after DER decode, cipher text:%s\n", hex.EncodeToString(cipherText))
+
+	plainText, err := Decrypt(priv, cipherText, C1C3C2)
 	if err != nil {
 		t.Error(err.Error())
 		return

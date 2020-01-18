@@ -21,6 +21,15 @@ const (
 	UnCompress = 0x04
 )
 
+type Sm2CipherTextType int32
+
+const (
+	// 旧标准的密文顺序
+	C1C2C3 Sm2CipherTextType = 1
+	// [GM/T 0009-2012]标准规定的顺序
+	C1C3C2 Sm2CipherTextType = 2
+)
+
 var (
 	sm2H                 = new(big.Int).SetInt64(1)
 	sm2SignDefaultUserId = []byte{
@@ -49,10 +58,16 @@ type sm2Signature struct {
 	R, S *big.Int
 }
 
-type sm2Cipher struct {
+type sm2CipherC1C3C2 struct {
 	X, Y *big.Int
 	C3   []byte
 	C2   []byte
+}
+
+type sm2CipherC1C2C3 struct {
+	X, Y *big.Int
+	C2   []byte
+	C3   []byte
 }
 
 func init() {
@@ -232,7 +247,7 @@ func notEncrypted(encData []byte, in []byte) bool {
 	return true
 }
 
-func Encrypt(pub *PublicKey, in []byte) ([]byte, error) {
+func Encrypt(pub *PublicKey, in []byte, cipherTextType Sm2CipherTextType) ([]byte, error) {
 	c2 := make([]byte, len(in))
 	copy(c2, in)
 	var c1 []byte
@@ -264,13 +279,21 @@ func Encrypt(pub *PublicKey, in []byte) ([]byte, error) {
 	c2Len := len(c2)
 	c3Len := len(c3)
 	result := make([]byte, c1Len+c2Len+c3Len)
-	copy(result[:c1Len], c1)
-	copy(result[c1Len:c1Len+c2Len], c2)
-	copy(result[c1Len+c2Len:], c3)
+	if cipherTextType == C1C2C3 {
+		copy(result[:c1Len], c1)
+		copy(result[c1Len:c1Len+c2Len], c2)
+		copy(result[c1Len+c2Len:], c3)
+	} else if cipherTextType == C1C3C2 {
+		copy(result[:c1Len], c1)
+		copy(result[c1Len:c1Len+c3Len], c3)
+		copy(result[c1Len+c3Len:], c2)
+	} else {
+		return nil, errors.New("unknown cipherTextType:" + string(cipherTextType))
+	}
 	return result, nil
 }
 
-func Decrypt(priv *PrivateKey, in []byte) ([]byte, error) {
+func Decrypt(priv *PrivateKey, in []byte, cipherTextType Sm2CipherTextType) ([]byte, error) {
 	c1Len := ((priv.Curve.BitSize+7)/8)*2 + 1
 	c1 := make([]byte, c1Len)
 	copy(c1, in[:c1Len])
@@ -285,22 +308,32 @@ func Decrypt(priv *PrivateKey, in []byte) ([]byte, error) {
 	c3Len := digest.Size()
 	c2Len := len(in) - c1Len - c3Len
 	c2 := make([]byte, c2Len)
-	copy(c2, in[c1Len:c1Len+c2Len])
+	c3 := make([]byte, c3Len)
+	if cipherTextType == C1C2C3 {
+		copy(c2, in[c1Len:c1Len+c2Len])
+		copy(c3, in[c1Len+c2Len:])
+	} else if cipherTextType == C1C3C2 {
+		copy(c3, in[c1Len:c1Len+c3Len])
+		copy(c2, in[c1Len+c3Len:])
+	} else {
+		return nil, errors.New("unknown cipherTextType:" + string(cipherTextType))
+	}
+
 	kdf(digest, c1x, c1y, c2)
 
 	digest.Reset()
 	digest.Write(c1x.Bytes())
 	digest.Write(c2)
 	digest.Write(c1y.Bytes())
-	c3 := digest.Sum(nil)
+	newC3 := digest.Sum(nil)
 
-	if !bytes.Equal(c3, in[c1Len+c2Len:]) {
+	if !bytes.Equal(newC3, c3) {
 		return nil, errors.New("invalid cipher text")
 	}
 	return c2, nil
 }
 
-func MarshalCipher(in []byte) ([]byte, error) {
+func MarshalCipher(in []byte, cipherTextType Sm2CipherTextType) ([]byte, error) {
 	byteLen := (sm2P256V1.Params().BitSize + 7) >> 3
 	c1x := make([]byte, byteLen)
 	c1y := make([]byte, byteLen)
@@ -311,55 +344,86 @@ func MarshalCipher(in []byte) ([]byte, error) {
 
 	copy(c1x, in[pos:pos+byteLen])
 	pos += byteLen
-
 	copy(c1y, in[pos:pos+byteLen])
 	pos += byteLen
-
-	copy(c2, in[pos:pos+c2Len])
-	pos += c2Len
-
-	copy(c3, in[pos:pos+sm3.DigestLength])
-
 	nc1x := new(big.Int).SetBytes(c1x)
 	nc1y := new(big.Int).SetBytes(c1y)
-	result, err := asn1.Marshal(sm2Cipher{nc1x, nc1y, c3, c2})
-	if err != nil {
-		return nil, err
+
+	if cipherTextType == C1C2C3 {
+		copy(c2, in[pos:pos+c2Len])
+		pos += c2Len
+		copy(c3, in[pos:pos+sm3.DigestLength])
+		result, err := asn1.Marshal(sm2CipherC1C2C3{nc1x, nc1y, c2, c3})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	} else if cipherTextType == C1C3C2 {
+		copy(c3, in[pos:pos+sm3.DigestLength])
+		pos += sm3.DigestLength
+		copy(c2, in[pos:pos+c2Len])
+		result, err := asn1.Marshal(sm2CipherC1C3C2{nc1x, nc1y, c3, c2})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	} else {
+		return nil, errors.New("unknown cipherTextType:" + string(cipherTextType))
 	}
-	return result, nil
 }
 
-func UnmarshalCipher(in []byte) (out []byte, err error) {
-	cipher := new(sm2Cipher)
-	_, err = asn1.Unmarshal(in, cipher)
-	if err != nil {
-		return nil, err
+func UnmarshalCipher(in []byte, cipherTextType Sm2CipherTextType) (out []byte, err error) {
+	if cipherTextType == C1C2C3 {
+		cipher := new(sm2CipherC1C2C3)
+		_, err = asn1.Unmarshal(in, cipher)
+		if err != nil {
+			return nil, err
+		}
+		c1x := cipher.X.Bytes()
+		c1y := cipher.Y.Bytes()
+		c1xLen := len(c1x)
+		c1yLen := len(c1y)
+		c2Len := len(cipher.C2)
+		c3Len := len(cipher.C3)
+		result := make([]byte, 1+c1xLen+c1yLen+c2Len+c3Len)
+		pos := 0
+		result[pos] = UnCompress
+		pos += 1
+		copy(result[pos:pos+c1xLen], c1x)
+		pos += c1xLen
+		copy(result[pos:pos+c1yLen], c1y)
+		pos += c1yLen
+		copy(result[pos:pos+c2Len], cipher.C2)
+		pos += c2Len
+		copy(result[pos:pos+c3Len], cipher.C3)
+		return result, nil
+	} else if cipherTextType == C1C3C2 {
+		cipher := new(sm2CipherC1C3C2)
+		_, err = asn1.Unmarshal(in, cipher)
+		if err != nil {
+			return nil, err
+		}
+		c1x := cipher.X.Bytes()
+		c1y := cipher.Y.Bytes()
+		c1xLen := len(c1x)
+		c1yLen := len(c1y)
+		c2Len := len(cipher.C2)
+		c3Len := len(cipher.C3)
+		result := make([]byte, 1+c1xLen+c1yLen+c2Len+c3Len)
+		pos := 0
+		result[pos] = UnCompress
+		pos += 1
+		copy(result[pos:pos+c1xLen], c1x)
+		pos += c1xLen
+		copy(result[pos:pos+c1yLen], c1y)
+		pos += c1yLen
+		copy(result[pos:pos+c3Len], cipher.C3)
+		pos += c3Len
+		copy(result[pos:pos+c2Len], cipher.C2)
+		return result, nil
+	} else {
+		return nil, errors.New("unknown cipherTextType:" + string(cipherTextType))
 	}
-
-	c1x := cipher.X.Bytes()
-	c1y := cipher.Y.Bytes()
-	c1xLen := len(c1x)
-	c1yLen := len(c1y)
-	c2Len := len(cipher.C2)
-	c3Len := len(cipher.C3)
-	result := make([]byte, 1+c1xLen+c1yLen+c2Len+c3Len)
-	pos := 0
-
-	result[pos] = UnCompress
-	pos += 1
-
-	copy(result[pos:pos+c1xLen], c1x)
-	pos += c1xLen
-
-	copy(result[pos:pos+c1yLen], c1y)
-	pos += c1yLen
-
-	copy(result[pos:pos+c2Len], cipher.C2)
-	pos += c2Len
-
-	copy(result[pos:pos+c3Len], cipher.C3)
-
-	return result, nil
 }
 
 func getZ(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, userId []byte) []byte {

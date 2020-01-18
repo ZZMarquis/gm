@@ -44,6 +44,10 @@ func TestEncryptDecrypt(t *testing.T) {
 		return
 	}
 
+	fmt.Printf("d:%s\n", hex.EncodeToString(priv.D.Bytes()))
+	fmt.Printf("x:%s\n", hex.EncodeToString(pub.X.Bytes()))
+	fmt.Printf("y:%s\n", hex.EncodeToString(pub.Y.Bytes()))
+
 	cipherText, err := Encrypt(pub, src)
 	if err != nil {
 		t.Error(err.Error())

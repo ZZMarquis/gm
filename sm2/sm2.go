@@ -208,8 +208,8 @@ func xor(data []byte, kdfOut []byte, dRemaining int) {
 
 func kdf(digest hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
 	bufSize := 4
-	if bufSize < digest.BlockSize() {
-		bufSize = digest.BlockSize()
+	if bufSize < digest.Size() {
+		bufSize = digest.Size()
 	}
 	buf := make([]byte, bufSize)
 
@@ -229,8 +229,8 @@ func kdf(digest hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
 		copy(buf[:bufSize], tmp[:bufSize])
 
 		xorLen := encDataLen - off
-		if xorLen > digest.BlockSize() {
-			xorLen = digest.BlockSize()
+		if xorLen > digest.Size() {
+			xorLen = digest.Size()
 		}
 		xor(encData[off:], buf, xorLen)
 		off += xorLen

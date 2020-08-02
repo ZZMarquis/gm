@@ -115,13 +115,13 @@ func CalculateKeyWithConfirmation(initiator bool, keyBits int, confirmationTag [
 		return nil, errors.New("if initiating, confirmationTag must be set")
 	}
 
-	selfStaticPub := calculatePubKey(selfStaticPriv)
+	selfStaticPub := CalculatePubKey(selfStaticPriv)
 	digest := sm3.New()
 	za := getZ(digest, &selfStaticPriv.Curve, selfStaticPub.X, selfStaticPub.Y, selfId)
 	zb := getZ(digest, &selfStaticPriv.Curve, otherStaticPub.X, otherStaticPub.Y, otherId)
 
 	w := selfStaticPriv.Curve.BitSize/2 - 1
-	selfEphemeralPub := calculatePubKey(selfEphemeralPriv)
+	selfEphemeralPub := CalculatePubKey(selfEphemeralPriv)
 	ux, uy := calculateU(w, selfStaticPriv, selfEphemeralPriv, selfEphemeralPub, otherStaticPub, otherEphemeralPub)
 	if initiator {
 		rv := kdfForExch(digest, ux, uy, za, zb, keyBits)

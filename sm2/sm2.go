@@ -178,7 +178,7 @@ func (pri *PrivateKey) GetRawBytes() []byte {
 	}
 }
 
-func calculatePubKey(priv *PrivateKey) *PublicKey {
+func CalculatePubKey(priv *PrivateKey) *PublicKey {
 	pub := new(PublicKey)
 	pub.Curve = priv.Curve
 	pub.X, pub.Y = priv.Curve.ScalarBaseMult(priv.D.Bytes())

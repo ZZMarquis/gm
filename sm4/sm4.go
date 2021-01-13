@@ -3,6 +3,7 @@ package sm4
 import (
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"math/bits"
 	"strconv"
 )
@@ -218,4 +219,78 @@ func f2(x []uint32, rk uint32) uint32 {
 
 func f3(x []uint32, rk uint32) uint32 {
 	return x[3] ^ t(x[0]^x[1]^x[2]^rk)
+}
+
+// 输入的plainText长度必须是BlockSize(16)的整数倍，也就是调用该方法前调用方需先加好padding，
+// 可调用util.PKCS5Padding()方法进行加padding操作
+func ECBEncrypt(key, plainText []byte) (cipherText []byte, err error) {
+	plainTextLen := len(plainText)
+	if plainTextLen%BlockSize != 0 {
+		return nil, errors.New("input not full blocks")
+	}
+
+	c, err := NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	cipherText = make([]byte, plainTextLen)
+	for i := 0; i < plainTextLen; i += BlockSize {
+		c.Encrypt(cipherText[i:i+BlockSize], plainText[i:i+BlockSize])
+	}
+	return cipherText, nil
+}
+
+// 输出的plainText是加padding的明文，调用方需要自己去padding，
+// 可调用util.PKCS5UnPadding()方法进行去padding操作
+func ECBDecrypt(key, cipherText []byte) (plainText []byte, err error) {
+	cipherTextLen := len(cipherText)
+	if cipherTextLen%BlockSize != 0 {
+		return nil, errors.New("input not full blocks")
+	}
+
+	c, err := NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	plainText = make([]byte, cipherTextLen)
+	for i := 0; i < cipherTextLen; i += BlockSize {
+		c.Decrypt(plainText[i:i+BlockSize], cipherText[i:i+BlockSize])
+	}
+	return plainText, nil
+}
+
+// 输入的plainText长度必须是BlockSize(16)的整数倍，也就是调用该方法前调用方需先加好padding，
+// 可调用util.PKCS5Padding()方法进行加padding操作
+func CBCEncrypt(key, iv, plainText []byte) (cipherText []byte, err error) {
+	plainTextLen := len(plainText)
+	if plainTextLen%BlockSize != 0 {
+		return nil, errors.New("input not full blocks")
+	}
+
+	c, err := NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	encrypter := cipher.NewCBCEncrypter(c, iv)
+	cipherText = make([]byte, plainTextLen)
+	encrypter.CryptBlocks(cipherText, plainText)
+	return cipherText, nil
+}
+
+// 输出的plainText是加padding的明文，调用方需要自己去padding，
+// 可调用util.PKCS5UnPadding()方法进行去padding操作
+func CBCDecrypt(key, iv, cipherText []byte) (plainText []byte, err error) {
+	cipherTextLen := len(cipherText)
+	if cipherTextLen%BlockSize != 0 {
+		return nil, errors.New("input not full blocks")
+	}
+
+	c, err := NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	decrypter := cipher.NewCBCDecrypter(c, iv)
+	plainText = make([]byte, len(cipherText))
+	decrypter.CryptBlocks(plainText, cipherText)
+	return plainText, nil
 }

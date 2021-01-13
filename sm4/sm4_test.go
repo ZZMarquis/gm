@@ -2,7 +2,6 @@ package sm4
 
 import (
 	"bytes"
-	"crypto/cipher"
 	"encoding/hex"
 	"fmt"
 	"github.com/ZZMarquis/gm/util"
@@ -31,31 +30,57 @@ var testData = []sm4CbcTestData{
 	},
 }
 
-func TestSm4Cipher_Encrypt(t *testing.T) {
+func TestSm4_CBC_Encrypt(t *testing.T) {
 	for _, data := range testData {
-		c, err := NewCipher(data.key)
+		fmt.Printf("Key:%s\n", hex.EncodeToString(data.key))
+		fmt.Printf("IV:%s\n", hex.EncodeToString(data.iv))
+
+		cipherText, err := CBCEncrypt(data.key, data.iv, util.PKCS5Padding(data.in, BlockSize))
 		if err != nil {
 			t.Error(err.Error())
 			return
 		}
-
-		encrypter := cipher.NewCBCEncrypter(c, data.iv)
-		result := make([]byte, len(data.out))
-		encrypter.CryptBlocks(result, util.PKCS5Padding(data.in, BlockSize))
-		fmt.Printf("encrypt result:%s\n", hex.EncodeToString(result))
-		if !bytes.Equal(result, data.out) {
-			t.Error("encrypt result not equal expected")
+		fmt.Printf("encrypt cipherText:%s\n", hex.EncodeToString(cipherText))
+		if !bytes.Equal(cipherText, data.out) {
+			t.Error("encrypt cipherText not equal expected")
 			return
 		}
 
-		decrypter := cipher.NewCBCDecrypter(c, data.iv)
-		plain := make([]byte, len(result))
-		decrypter.CryptBlocks(plain, result)
-		fmt.Printf("decrypt result:%s\n", hex.EncodeToString(plain))
-		plain = util.PKCS5UnPadding(plain)
-		if !bytes.Equal(plain, data.in) {
-			t.Error("decrypt result not equal expected")
+		plainTextWithPadding, err := CBCDecrypt(data.key, data.iv, cipherText)
+		if err != nil {
+			t.Error(err.Error())
 			return
 		}
+		fmt.Printf("decrypt cipherText:%s\n", hex.EncodeToString(plainTextWithPadding))
+		plainText := util.PKCS5UnPadding(plainTextWithPadding)
+		if !bytes.Equal(plainText, data.in) {
+			t.Error("decrypt cipherText not equal expected")
+			return
+		}
+	}
+}
+
+func TestSm4_ECB_Encrypt(t *testing.T) {
+	key := []byte("0000000000000000")
+	in := []byte("ssssssssssssssss")
+
+	plainTextWithPadding := util.PKCS5Padding(in, BlockSize)
+	cipherText, err := ECBEncrypt(key, plainTextWithPadding)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Printf("%x\n", cipherText)
+
+	plainTextWithPadding, err = ECBDecrypt(key, cipherText)
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	plainText := util.PKCS5UnPadding(plainTextWithPadding)
+	fmt.Println(string(plainText))
+	if !bytes.Equal(in, plainText) {
+		t.Error("decrypt result not equal expected")
+		return
 	}
 }

@@ -132,8 +132,8 @@ func RawBytesToPrivateKey(bytes []byte) (*PrivateKey, error) {
 }
 
 func (pub *PublicKey) GetUnCompressBytes() []byte {
-	xBytes := pub.X.Bytes()
-	yBytes := pub.Y.Bytes()
+	xBytes := bigIntTo32Bytes(pub.X)
+	yBytes := bigIntTo32Bytes(pub.Y)
 	xl := len(xBytes)
 	yl := len(yBytes)
 
@@ -163,7 +163,7 @@ func (pub *PublicKey) GetRawBytes() []byte {
 }
 
 func (pri *PrivateKey) GetRawBytes() []byte {
-	dBytes := pri.D.Bytes()
+	dBytes := bigIntTo32Bytes(pri.D)
 	dl := len(dBytes)
 	if dl > KeyBytes {
 		raw := make([]byte, KeyBytes)
@@ -206,6 +206,17 @@ func xor(data []byte, kdfOut []byte, dRemaining int) {
 	}
 }
 
+// 表示SM2 Key的大数比较小时，直接通过Bytes()函数得到的字节数组可能不够32字节，这个时候要补齐成32字节
+func bigIntTo32Bytes(bn *big.Int) []byte {
+	byteArr := bn.Bytes()
+	byteArrLen := len(byteArr)
+	if byteArrLen == KeyBytes {
+		return byteArr
+	}
+	byteArr = append(make([]byte, KeyBytes-byteArrLen), byteArr...)
+	return byteArr
+}
+
 func kdf(digest hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
 	bufSize := 4
 	if bufSize < digest.Size() {
@@ -214,14 +225,14 @@ func kdf(digest hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
 	buf := make([]byte, bufSize)
 
 	encDataLen := len(encData)
-	c1xBytes := c1x.Bytes()
-	c1yBytes := c1y.Bytes()
+	c1xBytes := bigIntTo32Bytes(c1x)
+	c1yBytes := bigIntTo32Bytes(c1y)
 	off := 0
 	ct := uint32(0)
 	for off < encDataLen {
 		digest.Reset()
-		digest.Write(append(make([]byte, 32-len(c1xBytes)), c1xBytes...))
-		digest.Write(append(make([]byte, 32-len(c1yBytes)), c1yBytes...))
+		digest.Write(c1xBytes)
+		digest.Write(c1yBytes)
 		ct++
 		binary.BigEndian.PutUint32(buf, ct)
 		digest.Write(buf[:4])
@@ -270,9 +281,9 @@ func Encrypt(pub *PublicKey, in []byte, cipherTextType Sm2CipherTextType) ([]byt
 	}
 
 	digest.Reset()
-	digest.Write(kPBx.Bytes())
+	digest.Write(bigIntTo32Bytes(kPBx))
 	digest.Write(in)
-	digest.Write(kPBy.Bytes())
+	digest.Write(bigIntTo32Bytes(kPBy))
 	c3 := digest.Sum(nil)
 
 	c1Len := len(c1)
@@ -294,7 +305,7 @@ func Encrypt(pub *PublicKey, in []byte, cipherTextType Sm2CipherTextType) ([]byt
 }
 
 func Decrypt(priv *PrivateKey, in []byte, cipherTextType Sm2CipherTextType) ([]byte, error) {
-	c1Len := ((priv.Curve.BitSize+7)/8)*2 + 1
+	c1Len := ((priv.Curve.BitSize+7)>>3)*2 + 1
 	c1 := make([]byte, c1Len)
 	copy(c1, in[:c1Len])
 	c1x, c1y := elliptic.Unmarshal(priv.Curve, c1)
@@ -322,9 +333,9 @@ func Decrypt(priv *PrivateKey, in []byte, cipherTextType Sm2CipherTextType) ([]b
 	kdf(digest, c1x, c1y, c2)
 
 	digest.Reset()
-	digest.Write(append(make([]byte, 32-len(c1x.Bytes())), c1x.Bytes()...))
+	digest.Write(bigIntTo32Bytes(c1x))
 	digest.Write(c2)
-	digest.Write(append(make([]byte, 32-len(c1y.Bytes())), c1y.Bytes()...))
+	digest.Write(bigIntTo32Bytes(c1y))
 	newC3 := digest.Sum(nil)
 
 	if !bytes.Equal(newC3, c3) {
@@ -379,19 +390,19 @@ func UnmarshalCipher(in []byte, cipherTextType Sm2CipherTextType) (out []byte, e
 		if err != nil {
 			return nil, err
 		}
-		c1x := cipher.X.Bytes()
-		c1y := cipher.Y.Bytes()
-		c1xLen := len(c1x)
-		c1yLen := len(c1y)
+		c1xBytes := bigIntTo32Bytes(cipher.X)
+		c1yBytes := bigIntTo32Bytes(cipher.Y)
+		c1xLen := len(c1xBytes)
+		c1yLen := len(c1yBytes)
 		c2Len := len(cipher.C2)
 		c3Len := len(cipher.C3)
 		result := make([]byte, 1+c1xLen+c1yLen+c2Len+c3Len)
 		pos := 0
 		result[pos] = UnCompress
 		pos += 1
-		copy(result[pos:pos+c1xLen], c1x)
+		copy(result[pos:pos+c1xLen], c1xBytes)
 		pos += c1xLen
-		copy(result[pos:pos+c1yLen], c1y)
+		copy(result[pos:pos+c1yLen], c1yBytes)
 		pos += c1yLen
 		copy(result[pos:pos+c2Len], cipher.C2)
 		pos += c2Len
@@ -403,19 +414,19 @@ func UnmarshalCipher(in []byte, cipherTextType Sm2CipherTextType) (out []byte, e
 		if err != nil {
 			return nil, err
 		}
-		c1x := cipher.X.Bytes()
-		c1y := cipher.Y.Bytes()
-		c1xLen := len(c1x)
-		c1yLen := len(c1y)
+		c1xBytes := bigIntTo32Bytes(cipher.X)
+		c1yBytes := bigIntTo32Bytes(cipher.Y)
+		c1xLen := len(c1xBytes)
+		c1yLen := len(c1yBytes)
 		c2Len := len(cipher.C2)
 		c3Len := len(cipher.C3)
 		result := make([]byte, 1+c1xLen+c1yLen+c2Len+c3Len)
 		pos := 0
 		result[pos] = UnCompress
 		pos += 1
-		copy(result[pos:pos+c1xLen], c1x)
+		copy(result[pos:pos+c1xLen], c1xBytes)
 		pos += c1xLen
-		copy(result[pos:pos+c1yLen], c1y)
+		copy(result[pos:pos+c1yLen], c1yBytes)
 		pos += c1yLen
 		copy(result[pos:pos+c3Len], cipher.C3)
 		pos += c3Len
@@ -437,12 +448,12 @@ func getZ(digest hash.Hash, curve *P256V1Curve, pubX *big.Int, pubY *big.Int, us
 		digest.Write(userId)
 	}
 
-	digest.Write(curve.A.Bytes())
-	digest.Write(curve.B.Bytes())
-	digest.Write(curve.Gx.Bytes())
-	digest.Write(curve.Gy.Bytes())
-	digest.Write(pubX.Bytes())
-	digest.Write(pubY.Bytes())
+	digest.Write(bigIntTo32Bytes(curve.A))
+	digest.Write(bigIntTo32Bytes(curve.B))
+	digest.Write(bigIntTo32Bytes(curve.Gx))
+	digest.Write(bigIntTo32Bytes(curve.Gy))
+	digest.Write(bigIntTo32Bytes(pubX))
+	digest.Write(bigIntTo32Bytes(pubY))
 	return digest.Sum(nil)
 }
 

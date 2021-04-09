@@ -220,8 +220,8 @@ func kdf(digest hash.Hash, c1x *big.Int, c1y *big.Int, encData []byte) {
 	ct := uint32(0)
 	for off < encDataLen {
 		digest.Reset()
-		digest.Write(c1xBytes)
-		digest.Write(c1yBytes)
+		digest.Write(append(make([]byte, 32-len(c1xBytes)), c1xBytes...))
+		digest.Write(append(make([]byte, 32-len(c1yBytes)), c1yBytes...))
 		ct++
 		binary.BigEndian.PutUint32(buf, ct)
 		digest.Write(buf[:4])
@@ -322,9 +322,9 @@ func Decrypt(priv *PrivateKey, in []byte, cipherTextType Sm2CipherTextType) ([]b
 	kdf(digest, c1x, c1y, c2)
 
 	digest.Reset()
-	digest.Write(c1x.Bytes())
+	digest.Write(append(make([]byte, 32-len(c1x.Bytes())), c1x.Bytes()...))
 	digest.Write(c2)
-	digest.Write(c1y.Bytes())
+	digest.Write(append(make([]byte, 32-len(c1y.Bytes())), c1y.Bytes()...))
 	newC3 := digest.Sum(nil)
 
 	if !bytes.Equal(newC3, c3) {

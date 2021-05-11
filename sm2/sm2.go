@@ -7,6 +7,7 @@ import (
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash"
 	"io"
 	"math/big"
@@ -112,7 +113,7 @@ func GenerateKey(rand io.Reader) (*PrivateKey, *PublicKey, error) {
 
 func RawBytesToPublicKey(bytes []byte) (*PublicKey, error) {
 	if len(bytes) != KeyBytes*2 {
-		return nil, errors.New("Public key raw bytes length must be " + string(KeyBytes*2))
+		return nil, errors.New(fmt.Sprintf("Public key raw bytes length must be %d", KeyBytes*2))
 	}
 	publicKey := new(PublicKey)
 	publicKey.Curve = sm2P256V1
@@ -123,7 +124,7 @@ func RawBytesToPublicKey(bytes []byte) (*PublicKey, error) {
 
 func RawBytesToPrivateKey(bytes []byte) (*PrivateKey, error) {
 	if len(bytes) != KeyBytes {
-		return nil, errors.New("Private key raw bytes length must be " + string(KeyBytes))
+		return nil, errors.New(fmt.Sprintf("Private key raw bytes length must be %d", KeyBytes))
 	}
 	privateKey := new(PrivateKey)
 	privateKey.Curve = sm2P256V1

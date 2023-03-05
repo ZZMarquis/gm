@@ -15,7 +15,7 @@ type sm4CbcTestData struct {
 	out []byte
 }
 
-var testData = []sm4CbcTestData{
+var cbcTestData = []sm4CbcTestData{
 	{
 		key: []byte{0x7b, 0xea, 0x0a, 0xa5, 0x45, 0x8e, 0xd1, 0xa3, 0x7d, 0xb1, 0x65, 0x2e, 0xfb, 0xc5, 0x95, 0x05},
 		iv:  []byte{0x70, 0xb6, 0xe0, 0x8d, 0x46, 0xee, 0x82, 0x24, 0x45, 0x60, 0x0b, 0x25, 0xc4, 0x71, 0xfa, 0xba},
@@ -31,7 +31,7 @@ var testData = []sm4CbcTestData{
 }
 
 func TestSm4_CBC_Encrypt(t *testing.T) {
-	for _, data := range testData {
+	for _, data := range cbcTestData {
 		fmt.Printf("Key:%s\n", hex.EncodeToString(data.key))
 		fmt.Printf("IV:%s\n", hex.EncodeToString(data.iv))
 
@@ -60,27 +60,69 @@ func TestSm4_CBC_Encrypt(t *testing.T) {
 	}
 }
 
-func TestSm4_ECB_Encrypt(t *testing.T) {
-	key := []byte("0000000000000000")
-	in := []byte("ssssssssssssssss")
+type sm4EcbTestData struct {
+	key []byte
+	in  []byte
+}
 
-	plainTextWithPadding := util.PKCS5Padding(in, BlockSize)
-	cipherText, err := ECBEncrypt(key, plainTextWithPadding)
-	if err != nil {
-		t.Error(err.Error())
-		return
-	}
-	fmt.Printf("%x\n", cipherText)
+var ecbTestData = []sm4EcbTestData{
+	{
+		key: []byte("1234567890123456"),
+		in:  []byte("ssssssss"),
+	}, {
+		key: []byte("1234567890123456"),
+		in:  []byte("ssssssssssssssss"),
+	}, {
+		key: []byte("1234567890123456"),
+		in:  []byte("ssssssssssssssssssssssss"),
+	},
+}
 
-	plainTextWithPadding, err = ECBDecrypt(key, cipherText)
-	if err != nil {
-		t.Error(err.Error())
-		return
+func TestSm4_ECB_Encrypt_PKCS5Padding(t *testing.T) {
+	for _, testData := range ecbTestData {
+		plainTextWithPadding := util.PKCS5Padding(testData.in, BlockSize)
+		cipherText, err := ECBEncrypt(testData.key, plainTextWithPadding)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+		fmt.Printf("%x\n", cipherText)
+
+		plainTextWithPadding, err = ECBDecrypt(testData.key, cipherText)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+		plainText := util.PKCS5UnPadding(plainTextWithPadding)
+		fmt.Println(string(plainText))
+		if !bytes.Equal(testData.in, plainText) {
+			t.Error("decrypt result not equal expected")
+			return
+		}
 	}
-	plainText := util.PKCS5UnPadding(plainTextWithPadding)
-	fmt.Println(string(plainText))
-	if !bytes.Equal(in, plainText) {
-		t.Error("decrypt result not equal expected")
-		return
+}
+
+func TestSm4_ECB_Encrypt_ZeroPadding(t *testing.T) {
+	for _, testData := range ecbTestData {
+		plainTextWithPadding := util.ZeroPadding(testData.in, BlockSize)
+		paddingLen := len(plainTextWithPadding) - len(testData.in)
+		cipherText, err := ECBEncrypt(testData.key, plainTextWithPadding)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+		fmt.Printf("%x\n", cipherText)
+
+		plainTextWithPadding, err = ECBDecrypt(testData.key, cipherText)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+		plainText := util.UnZeroPadding(plainTextWithPadding, paddingLen)
+		fmt.Println(string(plainText))
+		if !bytes.Equal(testData.in, plainText) {
+			t.Error("decrypt result not equal expected")
+			return
+		}
 	}
 }
